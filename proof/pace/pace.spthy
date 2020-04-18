@@ -6,16 +6,16 @@ section{* PACE protocol *}
 builtins:
   signing
 
-functions:
-  example/1
-
-equations:
-  identity(m) = m
-
-rule Example:
-    [ Fr(~sk) ]
-  -->
-    [ Out(~sk) ]
+//functions:
+//  example/1
+//
+//equations:
+//  identity(m) = m
+//
+//rule Example:
+//    [ Fr(~sk) ]
+//  -->
+//    [ Out(~sk) ]
 
 lemma secrecy:
   "All A x #i.
