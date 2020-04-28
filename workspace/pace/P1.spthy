@@ -9,6 +9,7 @@ section{* P1 protocol *}
  */
 
 /* TODO: Discuss if we want to add tags to messages. */
+/* TODO: Every thread needs a 'fresh identifier' called id. */
 /* TODO: Do we need to explicitly check if the key is uni-directional? */
 
 builtins:
