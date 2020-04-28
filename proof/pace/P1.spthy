@@ -3,19 +3,19 @@ begin
 
 section{* P1 protocol *}
 
+/*
+ * A -> B : x
+ * B -> A : [x]k(A,B)
+ */
+
 builtins:
   symmetric-encryption
 
 functions:
-  hmac/1
+  hmac/2
 
 equations:
   hmac(m, k) = senc(m, k)
-
-/*
-A -> B : x
-B -> A : [x]k(A,B)
-*/
 
 /* Set up long term pre-shared key for A and B. */
 rule Setup_PSK:
@@ -27,7 +27,7 @@ rule Setup_PSK:
 
 rule Reveal_PSK:
     [ !St_PSK($A, $B, k) ]
-  --[ PskReveal($A) ]->
+  --[ Reveal($A) ]->
     [ Out(k) ]
 
 /* Initialize thread for role A. */
@@ -82,6 +82,8 @@ rule A_2:
     [ St_A_2($A, $B, k)
     ]
 
+/* TODO: Do we need to check executability for this theory? */
+
 /*
 lemma injectiveagreementINITIATOR:
   "All a b t #i.
@@ -90,7 +92,6 @@ lemma injectiveagreementINITIATOR:
         & not (Ex a2 b2 #i2. Commit(a2,b2,<'I','R',t>) @i2
                            & not (#i2 = #i)))
               | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
-
 */
 
 end
