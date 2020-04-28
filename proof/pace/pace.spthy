@@ -17,6 +17,7 @@ builtins:
 //  -->
 //    [ Out(~sk) ]
 
+/*
 lemma secrecy:
   "All A x #i.
     Secret(A,x) @i ==>
@@ -56,6 +57,7 @@ lemma injectiveagreementRESPONDER:
               & not (Ex a2 b2 #i2. Commit(a2,b2,<'R','I',t>) @i2
                                  & not (#i2 = #i)))
               | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+*/
 
 // TODO: Write an executability lemma.
 

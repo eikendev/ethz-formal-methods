@@ -1,0 +1,96 @@
+theory P1
+begin
+
+section{* P1 protocol *}
+
+builtins:
+  symmetric-encryption
+
+functions:
+  hmac/1
+
+equations:
+  hmac(m, k) = senc(m, k)
+
+/*
+A -> B : x
+B -> A : [x]k(A,B)
+*/
+
+/* Set up long term pre-shared key for A and B. */
+rule Setup_PSK:
+    [ Fr(~k)
+    ]
+  --[]->
+    [ !St_PSK($A, $B, ~k)
+    ]
+
+rule Reveal_PSK:
+    [ !St_PSK($A, $B, k) ]
+  --[ PskReveal($A) ]->
+    [ Out(k) ]
+
+/* Initialize thread for role A. */
+rule A_0:
+    [ Fr(~x)
+    , !St_PSK($A, $B, k)
+    ]
+  -->
+    [ St_A_0($A, k, ~x)
+    ]
+
+/* Initialize thread for role B. */
+rule B_0:
+    [ !St_PSK($A, $B, k)
+    ]
+  -->
+    [ St_B_0($B, k)
+    ]
+
+/* Send the nonce from role A to role B. */
+rule A_1:
+    [ St_A_0($A, k, x)
+    ]
+  -->
+    [ St_A_1($A, k, x)
+    , Out(x)
+    ]
+
+/* Receive nonce from role A. */
+rule B_1:
+    [ St_B_0($B, k)
+    , In(x)
+    ]
+  -->
+    [ St_B_1($B, k, x)
+    ]
+
+/* Return the HMAC of the nonce to role A. */
+rule B_2:
+    [ St_B_1($B, k, x)
+    ]
+  -->
+    [ Out(hmac(x, k))
+    ]
+
+/* Receive the HMAC from role B. */
+rule A_2:
+    [ St_A_1($A, k, x)
+    , In(hmac(x, k))
+    ]
+  -->
+    [ St_A_2($A, $B, k)
+    ]
+
+/*
+lemma injectiveagreementINITIATOR:
+  "All a b t #i.
+    Commit(a,b,<'I','R',t>) @i
+    ==> (Ex #j. Running(b,a,<'I','R',t>) @j
+        & not (Ex a2 b2 #i2. Commit(a2,b2,<'I','R',t>) @i2
+                           & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+*/
+
+end
