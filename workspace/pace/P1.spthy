@@ -73,7 +73,8 @@ rule B_2:
     [ St_B_1($B, k, x)
     ]
   -->
-    [ Out(hmac(x, k))
+    [ St_B_2($B, k, x)
+    , Out(hmac(x, k))
     ]
 
 /* Receive the HMAC from role B. */
