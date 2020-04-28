@@ -8,6 +8,9 @@ section{* P1 protocol *}
  * B -> A : [x]k(A,B)
  */
 
+/* TODO: Discuss if we want to add tags to messages. */
+/* TODO: Do we need to explicitly check if the key is uni-directional? */
+
 builtins:
   symmetric-encryption
 
@@ -82,8 +85,11 @@ rule A_2:
     [ St_A_2($A, $B, k)
     ]
 
-/* TODO: Do we need to check executability for this theory? */
+/* TODO: Indicate whether or not this lemma gets verified. */
+/* TODO: Write an executability lemma. */
 
+/* TODO: Indicate whether or not this lemma gets verified. */
+/* TODO: Enable the following lemma. */
 /*
 lemma injectiveagreementINITIATOR:
   "All a b t #i.
