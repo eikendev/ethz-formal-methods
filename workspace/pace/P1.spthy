@@ -8,9 +8,8 @@ section{* P1 protocol *}
  * B -> A : [x]k(A,B)
  */
 
-/* TODO: Discuss if we want to add tags to messages. */
-/* TODO: Every thread needs a 'fresh identifier' called id. */
 /* TODO: Do we need to explicitly check if the key is uni-directional? */
+/* TODO: Can the intruder act as a regular participant? */
 
 builtins:
   symmetric-encryption
@@ -29,70 +28,76 @@ rule Setup_PSK:
     [ !St_PSK($A, $B, ~k)
     ]
 
+/* TODO: Do we need a reveal for B? */
 rule Reveal_PSK:
-    [ !St_PSK($A, $B, k) ]
-  --[ Reveal($A) ]->
+    [ !St_PSK(A, B, k) ]
+  --[ Reveal(A) ]->
     [ Out(k) ]
 
 /* Initialize thread for role A. */
 rule A_0:
-    [ Fr(~x)
-    , !St_PSK($A, $B, k)
+    [ Fr(~id)
+    , !St_PSK(A, B, k)
     ]
   -->
-    [ St_A_0($A, k, ~x)
+    [ St_A_0(A, ~id, B, k)
     ]
 
 /* Initialize thread for role B. */
 rule B_0:
-    [ !St_PSK($A, $B, k)
+    [ Fr(~id)
+    , !St_PSK(A, B, k)
     ]
   -->
-    [ St_B_0($B, k)
+    [ St_B_0(B, ~id, A, k)
     ]
 
 /* Send the nonce from role A to role B. */
 rule A_1:
-    [ St_A_0($A, k, x)
+    [ Fr(~x)
+    , St_A_0(A, id, B, k)
     ]
   -->
-    [ St_A_1($A, k, x)
-    , Out(x)
+    [ St_A_1(A, id, B, k, ~x)
+    , Out(<'NONCE', ~x>)
     ]
 
 /* Receive nonce from role A. */
 rule B_1:
-    [ St_B_0($B, k)
-    , In(x)
+    [ St_B_0(B, id, A, k)
+    , In(<'NONCE', x>)
     ]
-  -->
-    [ St_B_1($B, k, x)
+  --[ Running(B, A, <'I', 'R', x>) ]->
+    [ St_B_1(B, id, A, k, x)
     ]
 
 /* Return the HMAC of the nonce to role A. */
 rule B_2:
-    [ St_B_1($B, k, x)
+    [ St_B_1(B, id, A, k, x)
     ]
   -->
-    [ St_B_2($B, k, x)
-    , Out(hmac(x, k))
+    [ St_B_2(B, id, A, k, x)
+    , Out(<'HMAC', hmac(x, k)>)
     ]
 
 /* Receive the HMAC from role B. */
 rule A_2:
-    [ St_A_1($A, k, x)
-    , In(hmac(x, k))
+    [ St_A_1(A, id, B, k, x)
+    , In(<'HMAC', hmac(x, k)>)
     ]
-  -->
-    [ St_A_2($A, $B, k)
+  --[ Commit(A, B, <'I', 'R', x>)
+    , Honest(A)
+    , Honest(B)
+    , Finish() ]->
+    [ St_A_2(A, id, B, k, x)
     ]
 
 /* TODO: Indicate whether or not this lemma gets verified. */
-/* TODO: Write an executability lemma. */
+lemma executable:
+  exists-trace
+    "Ex #i. Finish() @i & not (Ex A #j. Reveal(A)@j)"
 
 /* TODO: Indicate whether or not this lemma gets verified. */
-/* TODO: Enable the following lemma. */
-/*
 lemma injectiveagreementINITIATOR:
   "All a b t #i.
     Commit(a,b,<'I','R',t>) @i
@@ -100,6 +105,5 @@ lemma injectiveagreementINITIATOR:
         & not (Ex a2 b2 #i2. Commit(a2,b2,<'I','R',t>) @i2
                            & not (#i2 = #i)))
               | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
-*/
 
 end
