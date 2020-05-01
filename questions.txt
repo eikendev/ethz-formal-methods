@@ -1,8 +1,0 @@
-Should the roles in the initialization rule be specified as public vars ($A) or messages (A)?
-(ex42H3 uses no dollar signs, but ex33_SDH does)
-
-From the Tamarin Docs, Chapter 3, section "Modeling a Public Key Infrastructure":
-$x denotes x:pub
-[...]]
-m denotes m:msg
-

@@ -8,9 +8,6 @@ section{* P1 protocol *}
  * B -> A : [x]k(A,B)
  */
 
-/* TODO: Do we need to explicitly check if the key is uni-directional? */
-/* TODO: Can the intruder act as a regular participant? */
-
 builtins:
   symmetric-encryption
 
@@ -24,14 +21,18 @@ equations:
 rule Setup_PSK:
     [ Fr(~k)
     ]
-  --[]->
+  --[ UnidirectionalKey($A, $B, ~k) ]->
     [ !St_PSK($A, $B, ~k)
     ]
 
-/* TODO: Do we need a reveal for B? */
-rule Reveal_PSK:
+rule Reveal_PSK_A:
     [ !St_PSK(A, B, k) ]
   --[ Reveal(A) ]->
+    [ Out(k) ]
+
+rule Reveal_PSK_B:
+    [ !St_PSK(A, B, k) ]
+  --[ Reveal(B) ]->
     [ Out(k) ]
 
 /* Initialize thread for role A. */
@@ -92,12 +93,19 @@ rule A_2:
     [ St_A_2(A, id, B, k, x)
     ]
 
-/* TODO: Indicate whether or not this lemma gets verified. */
+restriction UnidirectionalKeys:
+  "All a b k #i.
+    UnidirectionalKey(a, b, k) @i
+      & UnidirectionalKey(b, a, k) @i
+      & not (a = b)
+      ==> F"
+
+/* Executability lemma gets verified. */
 lemma executable:
   exists-trace
     "Ex #i. Finish() @i & not (Ex A #j. Reveal(A)@j)"
 
-/* TODO: Indicate whether or not this lemma gets verified. */
+/* Injective agreement of A with B on nonce x lemma gets verified. */
 lemma injectiveagreementINITIATOR:
   "All a b t #i.
     Commit(a,b,<'I','R',t>) @i

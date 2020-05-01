@@ -1,0 +1,159 @@
+theory P2a
+begin
+
+section{* P2 protocol *}
+
+/*
+ * A -> B : x
+ * B -> A : y
+ * A -> B : [y]k(B,A)
+ * B -> A : [x]k(A,B)
+ */
+
+builtins:
+  symmetric-encryption
+
+functions:
+  hmac/2
+
+equations:
+  hmac(m, k) = senc(m, k)
+
+/* Set up long term pre-shared key for A and B. */
+rule Setup_PSK:
+    [ Fr(~k)
+    ]
+  --[ UnidirectionalKey($A, $B, ~k) ]->
+    [ !St_PSK($A, $B, ~k)
+    ]
+
+rule Reveal_PSK_A:
+    [ !St_PSK(A, B, k) ]
+  --[ Reveal(A) ]->
+    [ Out(k) ]
+
+rule Reveal_PSK_B:
+    [ !St_PSK(A, B, k) ]
+  --[ Reveal(B) ]->
+    [ Out(k) ]
+
+/* Initialize thread for role A. */
+rule A_0:
+    [ Fr(~id)
+    , !St_PSK(A, B, krecv)
+    , !St_PSK(B, A, ksend)
+    ]
+  -->
+    [ St_A_0(A, ~id, B, krecv, ksend)
+    ]
+
+/* Initialize thread for role B. */
+rule B_0:
+    [ Fr(~id)
+    , !St_PSK(B, A, krecv)
+    , !St_PSK(A, B, ksend)
+    ]
+  -->
+    [ St_B_0(B, ~id, A, krecv, ksend)
+    ]
+
+/* Send the nonce x from role A to role B. */
+rule A_1:
+    [ Fr(~x)
+    , St_A_0(A, id, B, krecv, ksend)
+    ]
+  -->
+    [ St_A_1(A, id, B, krecv, ksend, ~x)
+    , Out(<'NONCE', ~x>)
+    ]
+
+/* Receive nonce x from role A. */
+rule B_1:
+    [ St_B_0(B, id, A, krecv, ksend)
+    , In(<'NONCE', x>)
+    ]
+  --[ Running(B, A, <'I', 'R', x>) ]->
+    [ St_B_1(B, id, A, krecv, ksend, x)
+    ]
+
+/* Send the nonce y from role B to role A. */
+rule B_2:
+    [ Fr(~y)
+    , St_B_1(B, id, A, krecv, ksend, x)
+    ]
+  -->
+    [ St_B_2(B, id, A, krecv, ksend, x, ~y)
+    , Out(<'NONCE', ~y>)
+    ]
+
+/* Receive nonce y from role B. */
+rule A_2:
+    [ St_A_1(A, id, B, krecv, ksend, x)
+    , In(<'NONCE', y>)
+    ]
+  --[ Running(A, B, <'I', 'R', y>) ]->
+    [ St_A_2(A, id, B, krecv, ksend, x, y)
+    ]
+
+/* Return the HMAC of the nonce y to role B. */
+rule A_3:
+    [ St_A_2(A, id, B, krecv, ksend, x, y)
+    ]
+  -->
+    [ St_A_3(A, id, B, krecv, ksend, x, y)
+    , Out(<'HMAC', hmac(y, ksend)>)
+    ]
+
+/* Receive the HMAC of y from role A. */
+rule B_3:
+    [ St_B_2(B, id, A, krecv, ksend, x, y)
+    , In(<'HMAC', hmac(y, krecv)>)
+    ]
+  --[
+    ]->
+    [ St_B_3(B, id, A, krecv, ksend, x, y)
+    ]
+
+/* Return the HMAC of the nonce x to role A. */
+rule B_4:
+    [ St_B_3(B, id, A, krecv, ksend, x, y)
+    ]
+  -->
+    [ St_B_4(B, id, A, krecv, ksend, x, y)
+    , Out(<'HMAC', hmac(x, ksend)>)
+    ]
+
+/* Receive the HMAC of x from role B. */
+rule A_4:
+    [ St_A_3(A, id, B, krecv, ksend, x, y)
+    , In(<'HMAC', hmac(x, k)>)
+    ]
+  --[
+    ]->
+    [ St_A_4(A, id, B, krecv, ksend, x, y)
+    ]
+
+#ifdef DONT
+restriction UnidirectionalKeys:
+  "All a b k #i.
+    UnidirectionalKey(a, b, k) @i
+      & UnidirectionalKey(b, a, k) @i
+      & not (a = b)
+      ==> F"
+
+/* Executability lemma gets verified. */
+lemma executable:
+  exists-trace
+    "Ex #i. Finish() @i & not (Ex A #j. Reveal(A)@j)"
+
+/* Injective agreement of A with B on nonce x lemma gets verified. */
+lemma injectiveagreementINITIATOR:
+  "All a b t #i.
+    Commit(a,b,<'I','R',t>) @i
+    ==> (Ex #j. Running(b,a,<'I','R',t>) @j
+        & not (Ex a2 b2 #i2. Commit(a2,b2,<'I','R',t>) @i2
+                           & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+#endif
+
+end
