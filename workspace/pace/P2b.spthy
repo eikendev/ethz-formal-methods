@@ -6,8 +6,8 @@ section{* P2 protocol *}
 /*
  * A -> B : x
  * B -> A : y
- * A -> B : ['A', 'B', y]k(B,A)
- * B -> A : ['B', 'A', x]k(A,B)
+ * A -> B : ['I', 'R', x, y]k(B,A)
+ * B -> A : ['R', 'I', x, y]k(A,B)
  */
 
 builtins:
@@ -91,7 +91,7 @@ rule A_2:
     [ St_A_1(A, id, B, krecv, ksend, x)
     , In(<'NONCE', y>)
     ]
-  --[ Running(A, B, <'R', 'I', y, x>) ]->
+  --[ Running(A, B, <'R', 'I', x, y>) ]->
     [ St_A_2(A, id, B, krecv, ksend, x, y)
     ]
 
@@ -101,13 +101,13 @@ rule A_3:
     ]
   -->
     [ St_A_3(A, id, B, krecv, ksend, x, y)
-    , Out(<'HMAC', hmac(<'A', 'B', y>, ksend)>)
+    , Out(<'HMAC', hmac(<'I', 'R', x, y>, ksend)>)
     ]
 
 /* Receive the HMAC of y from role A. */
 rule B_3:
     [ St_B_2(B, id, A, krecv, ksend, x, y)
-    , In(<'HMAC', hmac(<'A', 'B', y>, krecv)>)
+    , In(<'HMAC', hmac(<'I', 'R', x, y>, krecv)>)
     ]
   --[ Commit(B, A, <'R', 'I', x, y>)
     , Honest(B)
@@ -123,13 +123,13 @@ rule B_4:
   --[ Finish(B, A, 'R', krecv, ksend, x, y)
     ]->
     [ St_B_4(B, id, A, krecv, ksend, x, y)
-    , Out(<'HMAC', hmac(<'B', 'A', x>, ksend)>)
+    , Out(<'HMAC', hmac(<'R', 'I', x, y>, ksend)>)
     ]
 
 /* Receive the HMAC of x from role B. */
 rule A_4:
     [ St_A_3(A, id, B, krecv, ksend, x, y)
-    , In(<'HMAC', hmac(<'B', 'A', x>, krecv)>)
+    , In(<'HMAC', hmac(<'R', 'I', x, y>, krecv)>)
     ]
   --[ Commit(A, B, <'I', 'R', x, y>)
     , Honest(A)
