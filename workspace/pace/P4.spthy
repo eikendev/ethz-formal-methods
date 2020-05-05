@@ -1,0 +1,185 @@
+theory P4
+begin
+
+section{* P4 protocol *}
+
+/*
+ * A -> B : x, [s]h(K(A, B))
+ * B -> A : y
+ * A -> B : ['I', 'R', y]Kab
+ * B -> A : ['R', 'I', x]Kab
+ */
+
+builtins:
+  hashing, symmetric-encryption
+
+functions:
+  hmac/2, kdf/3
+
+equations:
+  hmac(m, k) = senc(m, k)
+
+/* Set up long term pre-shared key for A and B. */
+rule Setup_PSK:
+    [ Fr(~ltk)
+    ]
+  -->
+    [ !St_PSK($A, $B, ~ltk)
+    ]
+
+rule Reveal_PSK_A:
+    [ !St_PSK(A, B, ltk) ]
+  --[ Reveal(A) ]->
+    [ Out(ltk) ]
+
+rule Reveal_PSK_B:
+    [ !St_PSK(A, B, ltk) ]
+  --[ Reveal(B) ]->
+    [ Out(ltk) ]
+
+/* Initialize thread for role A. */
+rule A_0:
+    [ Fr(~id)
+    , !St_PSK(A, B, ltk)
+    ]
+  --[ Create(~id, 'I') ]->
+    [ St_A_0(A, ~id, B, ltk)
+    ]
+
+/* Initialize thread for role B. */
+rule B_0:
+    [ Fr(~id)
+    , !St_PSK(A, B, ltk)
+    ]
+  --[ Create(~id, 'R') ]->
+    [ St_B_0(B, ~id, A, ltk)
+    ]
+
+/* Send the nonce x from role A to role B. */
+rule A_1:
+    [ Fr(~x)
+    , Fr(~s)
+    , St_A_0(A, id, B, ltk)
+    ]
+  -->
+    [ St_A_1(A, id, B, ltk, ~s, ~x)
+    , Out(<'NONCES', ~x, senc(~s, h(ltk))>)
+    ]
+
+/* Receive nonce x from role A. */
+rule B_1:
+    [ St_B_0(B, id, A, ltk)
+    , In(<'NONCES', x, senc(s, h(ltk))>)
+    ]
+  -->
+    [ St_B_1(B, id, A, ltk, s, x)
+    ]
+
+/* Send the nonce y from role B to role A. */
+rule B_2:
+    let Kab = kdf(s, x, ~y)
+    in
+    [ Fr(~y)
+    , St_B_1(B, id, A, ltk, s, x)
+    ]
+  --[ Running(B, A, <'I', 'R', Kab, x, ~y>) ]->
+    [ St_B_2(B, id, A, ltk, s, x, ~y, Kab)
+    , Out(<'NONCES', ~y>)
+    ]
+
+/* Receive nonce y from role B. */
+rule A_2:
+    let Kab = kdf(s, x, y)
+    in
+    [ St_A_1(A, id, B, ltk, s, x)
+    , In(<'NONCES', y>)
+    ]
+  --[ Running(A, B, <'R', 'I', Kab, x, y>) ]->
+    [ St_A_2(A, id, B, ltk, s, x, y, Kab)
+    ]
+
+/* Return the HMAC of the nonce y to role B. */
+rule A_3:
+    [ St_A_2(A, id, B, ltk, s, x, y, Kab)
+    ]
+  -->
+    [ St_A_3(A, id, B, ltk, s, x, y, Kab)
+    , Out(<'HMAC', hmac(<'I', 'R', y>, Kab)>)
+    ]
+
+/* Receive the HMAC of y from role A. */
+rule B_3:
+    [ St_B_2(B, id, A, ltk, s, x, y, Kab)
+    , In(<'HMAC', hmac(<'I', 'R', y>, Kab)>)
+    ]
+  --[ Commit(B, A, <'R', 'I', Kab, x, y>)
+    , Honest(B)
+    , Honest(A)
+    ]->
+    [ St_B_3(B, id, A, ltk, s, x, y, Kab)
+    ]
+
+/* Return the HMAC of the nonce x to role A. */
+rule B_4:
+    [ St_B_3(B, id, A, ltk, s, x, y, Kab)
+    ]
+  --[ Finish(B, A, 'R', ltk, x, y)
+    , Honest(B)
+    , Honest(A)
+    , Secret(B, Kab)
+    ]->
+    [ St_B_4(B, id, A, ltk, s, x, y, Kab)
+    , Out(<'HMAC', hmac(<'R', 'I', x>, Kab)>)
+    ]
+
+/* Receive the HMAC of x from role B. */
+rule A_4:
+    [ St_A_3(A, id, B, ltk, s, x, y, Kab)
+    , In(<'HMAC', hmac(<'R', 'I', x>, Kab)>)
+    ]
+  --[ Commit(A, B, <'I', 'R', Kab, x, y>)
+    , Honest(A)
+    , Honest(B)
+    , Secret(A, Kab)
+    , Finish(A, B, 'I', ltk, x, y)
+    ]->
+    [ St_A_4(A, id, B, ltk, s, x, y, Kab)
+    ]
+
+/* Executability lemma gets verified. */
+lemma executable:
+  exists-trace
+    "Ex a b x y ltk #i #j.
+      Finish(b, a, 'R', ltk, x, y) @i
+      & Finish(a, b, 'I', ltk, x, y) @j
+      & (All id1 id2 #k1 #k2. Create(id1, 'I') @k1 & Create(id2, 'I') @k2 ==> id1 = id2)
+      & (All id1 id2 #k1 #k2. Create(id1, 'R') @k1 & Create(id2, 'R') @k2 ==> id1 = id2)
+      & not(a = b)
+      & not(Ex X #k. Reveal(X)@k)"
+
+/* Injective agreement of A with B on both nonces x and y does get verified. */
+lemma injectiveagreementINITIATOR:
+  "All a b x y Kab #i.
+    Commit(a,b,<'I','R',Kab,x,y>) @i
+    ==> (Ex #j. Running(b,a,<'I','R',Kab,x,y>) @j
+        & not (Ex a2 b2 #i2. Commit(a2,b2,<'I','R',Kab,x,y>) @i2
+                           & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Injective agreement of B with A on both nonces x and y does get verified. */
+lemma injectiveagreementRESPONDER:
+  "All a b x y Kab #i.
+    Commit(a,b,<'R','I',Kab,y,x>) @i
+    ==> (Ex #j. Running(b,a,<'R','I',Kab,y,x>) @j
+              & not (Ex a2 b2 #i2. Commit(a2,b2,<'R','I',Kab,y,x>) @i2
+                                 & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Secrecy of the key does get verified. */
+lemma secrecy:
+  "All A x #i.
+    Secret(A,x) @i ==>
+    not (Ex #j. K(x)@j)
+        | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+end
