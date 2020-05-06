@@ -1,0 +1,165 @@
+theory P1 begin
+
+// Function signature and definition of the equational theory E
+
+functions: fst/1, hmac/2, pair/2, sdec/2, senc/2, snd/1
+equations:
+    fst(<x.1, x.2>) = x.1,
+    hmac(m, k) = senc(m, k),
+    sdec(senc(x.1, x.2), x.2) = x.1,
+    snd(<x.1, x.2>) = x.2
+
+
+
+section{* P1 protocol *}
+
+rule (modulo E) Setup_PSK:
+   [ Fr( ~k ) ]
+  --[ UnidirectionalKey( $A, $B, ~k ) ]->
+   [ !St_PSK( $A, $B, ~k ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_PSK_A:
+   [ !St_PSK( A, B, k ) ] --[ Reveal( A ) ]-> [ Out( k ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_PSK_B:
+   [ !St_PSK( A, B, k ) ] --[ Reveal( B ) ]-> [ Out( k ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) A_0:
+   [ Fr( ~id ), !St_PSK( A, B, k ) ] --> [ St_A_0( A, ~id, B, k ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) B_0:
+   [ Fr( ~id ), !St_PSK( A, B, k ) ] --> [ St_B_0( B, ~id, A, k ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) A_1:
+   [ Fr( ~x ), St_A_0( A, id, B, k ) ]
+  -->
+   [ St_A_1( A, id, B, k, ~x ), Out( <'NONCE', ~x> ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) B_1:
+   [ St_B_0( B, id, A, k ), In( <'NONCE', x> ) ]
+  --[ Running( B, A, <'I', 'R', x> ) ]->
+   [ St_B_1( B, id, A, k, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) B_2:
+   [ St_B_1( B, id, A, k, x ) ]
+  -->
+   [ St_B_2( B, id, A, k, x ), Out( <'HMAC', hmac(x, k)> ) ]
+
+  /*
+  rule (modulo AC) B_2:
+     [ St_B_1( B, id, A, k, x ) ]
+    -->
+     [ St_B_2( B, id, A, k, x ), Out( <'HMAC', senc(x, k)> ) ]
+  */
+
+rule (modulo E) A_2:
+   [ St_A_1( A, id, B, k, x ), In( <'HMAC', hmac(x, k)> ) ]
+  --[
+  Commit( A, B, <'I', 'R', x> ), Honest( A ), Honest( B ), Finish( )
+  ]->
+   [ St_A_2( A, id, B, k, x ) ]
+
+  /*
+  rule (modulo AC) A_2:
+     [ St_A_1( A, id, B, k, x ), In( <'HMAC', senc(x, k)> ) ]
+    --[
+    Commit( A, B, <'I', 'R', x> ), Honest( A ), Honest( B ), Finish( )
+    ]->
+     [ St_A_2( A, id, B, k, x ) ]
+  */
+
+restriction UnidirectionalKeys:
+  "∀ a b k #i.
+    (((UnidirectionalKey( a, b, k ) @ #i) ∧
+      (UnidirectionalKey( b, a, k ) @ #i)) ∧
+     (¬(a = b))) ⇒
+    (⊥)"
+  // safety formula
+
+lemma executable:
+  exists-trace
+  "∃ #i. (Finish( ) @ #i) ∧ (¬(∃ A #j. Reveal( A ) @ #j))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #i. (Finish( ) @ #i) ∧ ∀ A #j. (Reveal( A ) @ #j) ⇒ ⊥"
+*/
+simplify
+solve( St_A_1( A, id, B, k, x ) ▶₀ #i )
+  case A_1
+  solve( !KU( senc(~x, ~k) ) @ #vk.2 )
+    case B_2
+    solve( !KU( ~x ) @ #vk.5 )
+      case A_1
+      SOLVED // trace found
+    qed
+  qed
+qed
+
+lemma injectiveagreementINITIATOR:
+  all-traces
+  "∀ a b t #i.
+    (Commit( a, b, <'I', 'R', t> ) @ #i) ⇒
+    ((∃ #j.
+       (Running( b, a, <'I', 'R', t> ) @ #j) ∧
+       (¬(∃ a2 b2 #i2.
+           (Commit( a2, b2, <'I', 'R', t> ) @ #i2) ∧ (¬(#i2 = #i))))) ∨
+     (∃ X #r. (Reveal( X ) @ #r) ∧ (Honest( X ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b t #i.
+  (Commit( a, b, <'I', 'R', t> ) @ #i)
+ ∧
+  (∀ #j.
+    (Running( b, a, <'I', 'R', t> ) @ #j)
+   ⇒
+    ∃ a2 b2 #i2.
+     (Commit( a2, b2, <'I', 'R', t> ) @ #i2) ∧ ¬(#i2 = #i)) ∧
+  (∀ X #r. (Reveal( X ) @ #r) ∧ (Honest( X ) @ #i) ⇒ ⊥)"
+*/
+simplify
+solve( St_A_1( a, id, b, k, t ) ▶₀ #i )
+  case A_1
+  solve( !KU( senc(~x, ~k) ) @ #vk.2 )
+    case B_2
+    solve( (#i2 < #i)  ∥ (#i < #i2) )
+      case case_1
+      solve( St_A_1( a2, id.1, b2, k.1, ~x ) ▶₀ #i2 )
+        case A_1
+        by contradiction /* cyclic */
+      qed
+    next
+      case case_2
+      solve( St_A_1( a2, id.1, b2, k.1, ~x ) ▶₀ #i2 )
+        case A_1
+        by contradiction /* cyclic */
+      qed
+    qed
+  next
+    case c_senc
+    solve( !KU( ~k ) @ #vk.4 )
+      case Reveal_PSK_A
+      by contradiction /* from formulas */
+    next
+      case Reveal_PSK_B
+      by contradiction /* from formulas */
+    qed
+  qed
+qed
+
+/* All well-formedness checks were successful. */
+
+end

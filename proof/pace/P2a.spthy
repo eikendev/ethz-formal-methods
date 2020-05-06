@@ -1,0 +1,287 @@
+theory P2a begin
+
+// Function signature and definition of the equational theory E
+
+functions: fst/1, hmac/2, pair/2, sdec/2, senc/2, snd/1
+equations:
+    fst(<x.1, x.2>) = x.1,
+    hmac(m, k) = senc(m, k),
+    sdec(senc(x.1, x.2), x.2) = x.1,
+    snd(<x.1, x.2>) = x.2
+
+
+
+section{* P2 protocol *}
+
+rule (modulo E) Setup_PSK:
+   [ Fr( ~k ) ] --> [ !St_PSK( $A, $B, ~k ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_PSK_A:
+   [ !St_PSK( A, B, k ) ] --[ Reveal( A ) ]-> [ Out( k ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_PSK_B:
+   [ !St_PSK( A, B, k ) ] --[ Reveal( B ) ]-> [ Out( k ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) A_0:
+   [ Fr( ~id ), !St_PSK( A, B, krecv ), !St_PSK( B, A, ksend ) ]
+  --[ Create( ~id, 'I' ), RegisterKeys( A, B, krecv, ksend ) ]->
+   [ St_A_0( A, ~id, B, krecv, ksend ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) B_0:
+   [ Fr( ~id ), !St_PSK( B, A, krecv ), !St_PSK( A, B, ksend ) ]
+  --[ Create( ~id, 'R' ), RegisterKeys( B, A, krecv, ksend ) ]->
+   [ St_B_0( B, ~id, A, krecv, ksend ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) A_1:
+   [ Fr( ~x ), St_A_0( A, id, B, krecv, ksend ) ]
+  -->
+   [ St_A_1( A, id, B, krecv, ksend, ~x ), Out( <'NONCE', ~x> ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) B_1:
+   [ St_B_0( B, id, A, krecv, ksend ), In( <'NONCE', x> ) ]
+  -->
+   [ St_B_1( B, id, A, krecv, ksend, x ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) B_2:
+   [ Fr( ~y ), St_B_1( B, id, A, krecv, ksend, x ) ]
+  --[ Running( B, A, <'I', 'R', x, ~y> ) ]->
+   [ St_B_2( B, id, A, krecv, ksend, x, ~y ), Out( <'NONCE', ~y> ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) A_2:
+   [ St_A_1( A, id, B, krecv, ksend, x ), In( <'NONCE', y> ) ]
+  --[ Running( A, B, <'R', 'I', y, x> ) ]->
+   [ St_A_2( A, id, B, krecv, ksend, x, y ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) A_3:
+   [ St_A_2( A, id, B, krecv, ksend, x, y ) ]
+  -->
+   [
+   St_A_3( A, id, B, krecv, ksend, x, y ),
+   Out( <'HMAC', hmac(y, ksend)> )
+   ]
+
+  /*
+  rule (modulo AC) A_3:
+     [ St_A_2( A, id, B, krecv, ksend, x, y ) ]
+    -->
+     [
+     St_A_3( A, id, B, krecv, ksend, x, y ),
+     Out( <'HMAC', senc(y, ksend)> )
+     ]
+  */
+
+rule (modulo E) B_3:
+   [
+   St_B_2( B, id, A, krecv, ksend, x, y ),
+   In( <'HMAC', hmac(y, krecv)> )
+   ]
+  --[ Commit( B, A, <'R', 'I', x, y> ), Honest( B ), Honest( A ) ]->
+   [ St_B_3( B, id, A, krecv, ksend, x, y ) ]
+
+  /*
+  rule (modulo AC) B_3:
+     [
+     St_B_2( B, id, A, krecv, ksend, x, y ),
+     In( <'HMAC', senc(y, krecv)> )
+     ]
+    --[ Commit( B, A, <'R', 'I', x, y> ), Honest( B ), Honest( A ) ]->
+     [ St_B_3( B, id, A, krecv, ksend, x, y ) ]
+  */
+
+rule (modulo E) B_4:
+   [ St_B_3( B, id, A, krecv, ksend, x, y ) ]
+  --[ Finish( B, A, 'R', krecv, ksend, x, y ) ]->
+   [
+   St_B_4( B, id, A, krecv, ksend, x, y ),
+   Out( <'HMAC', hmac(x, ksend)> )
+   ]
+
+  /*
+  rule (modulo AC) B_4:
+     [ St_B_3( B, id, A, krecv, ksend, x, y ) ]
+    --[ Finish( B, A, 'R', krecv, ksend, x, y ) ]->
+     [
+     St_B_4( B, id, A, krecv, ksend, x, y ),
+     Out( <'HMAC', senc(x, ksend)> )
+     ]
+  */
+
+rule (modulo E) A_4:
+   [
+   St_A_3( A, id, B, krecv, ksend, x, y ),
+   In( <'HMAC', hmac(x, krecv)> )
+   ]
+  --[
+  Commit( A, B, <'I', 'R', x, y> ), Honest( A ), Honest( B ),
+  Finish( A, B, 'I', krecv, ksend, x, y )
+  ]->
+   [ St_A_4( A, id, B, krecv, ksend, x, y ) ]
+
+  /*
+  rule (modulo AC) A_4:
+     [
+     St_A_3( A, id, B, krecv, ksend, x, y ),
+     In( <'HMAC', senc(x, krecv)> )
+     ]
+    --[
+    Commit( A, B, <'I', 'R', x, y> ), Honest( A ), Honest( B ),
+    Finish( A, B, 'I', krecv, ksend, x, y )
+    ]->
+     [ St_A_4( A, id, B, krecv, ksend, x, y ) ]
+  */
+
+restriction UnidirectionalKeys:
+  "∀ a b kab kba #i.
+    ((RegisterKeys( a, b, kab, kba ) @ #i) ∧ (kab = kba)) ⇒ (⊥)"
+  // safety formula
+
+lemma executable:
+  exists-trace
+  "∃ a b x y k1 k2 #i #j.
+    (((((Finish( b, a, 'R', k1, k2, x, y ) @ #i) ∧
+        (Finish( a, b, 'I', k2, k1, x, y ) @ #j)) ∧
+       (∀ id1 id2 #k1.1 #k2.1.
+         ((Create( id1, 'I' ) @ #k1.1) ∧ (Create( id2, 'I' ) @ #k2.1)) ⇒
+         (id1 = id2))) ∧
+      (∀ id1 id2 #k1.1 #k2.1.
+        ((Create( id1, 'R' ) @ #k1.1) ∧ (Create( id2, 'R' ) @ #k2.1)) ⇒
+        (id1 = id2))) ∧
+     (¬(a = b))) ∧
+    (¬(∃ X #k. Reveal( X ) @ #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ a b x y k1 k2 #i #j.
+  (Finish( b, a, 'R', k1, k2, x, y ) @ #i) ∧
+  (Finish( a, b, 'I', k2, k1, x, y ) @ #j)
+ ∧
+  (∀ id1 id2 #k1.1 #k2.1.
+    (Create( id1, 'I' ) @ #k1.1) ∧ (Create( id2, 'I' ) @ #k2.1)
+   ⇒
+    id1 = id2) ∧
+  (∀ id1 id2 #k1.1 #k2.1.
+    (Create( id1, 'R' ) @ #k1.1) ∧ (Create( id2, 'R' ) @ #k2.1)
+   ⇒
+    id1 = id2) ∧
+  (¬(a = b)) ∧
+  (∀ X #k. (Reveal( X ) @ #k) ⇒ ⊥)"
+*/
+simplify
+solve( Finish( b, a, 'R', k1, k2, x, y ) @ #i )
+  case B_4
+  solve( St_B_3( b, id, a, k1, k2, x, y ) ▶₀ #i )
+    case B_3
+    solve( Finish( $B, $A, 'I', ~k.1, ~k, x, ~y ) @ #j )
+      case A_4
+      solve( St_A_3( $B, id.1, $A, ~k.1, ~k, x, ~y ) ▶₀ #j )
+        case A_3
+        solve( !KU( ~y ) @ #vk.9 )
+          case B_2
+          solve( !KU( ~x ) @ #vk.8 )
+            case A_1
+            solve( !KU( senc(~y, ~k) ) @ #vk.6 )
+              case A_3
+              solve( !KU( senc(~x, ~k.1) ) @ #vk.9 )
+                case B_4
+                SOLVED // trace found
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma injectiveagreementINITIATOR:
+  all-traces
+  "∀ a b x y #i.
+    (Commit( a, b, <'I', 'R', x, y> ) @ #i) ⇒
+    ((∃ #j.
+       (Running( b, a, <'I', 'R', x, y> ) @ #j) ∧
+       (¬(∃ a2 b2 #i2.
+           (Commit( a2, b2, <'I', 'R', x, y> ) @ #i2) ∧ (¬(#i2 = #i))))) ∨
+     (∃ X #r. (Reveal( X ) @ #r) ∧ (Honest( X ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b x y #i.
+  (Commit( a, b, <'I', 'R', x, y> ) @ #i)
+ ∧
+  (∀ #j.
+    (Running( b, a, <'I', 'R', x, y> ) @ #j)
+   ⇒
+    ∃ a2 b2 #i2.
+     (Commit( a2, b2, <'I', 'R', x, y> ) @ #i2) ∧ ¬(#i2 = #i)) ∧
+  (∀ X #r. (Reveal( X ) @ #r) ∧ (Honest( X ) @ #i) ⇒ ⊥)"
+*/
+simplify
+solve( Commit( a, b, <'I', 'R', x, y> ) @ #i )
+  case A_4
+  solve( St_A_3( a, id, b, krecv, ksend, x, y ) ▶₀ #i )
+    case A_3
+    solve( !KU( senc(~x, ~k) ) @ #vk.2 )
+      case A_3
+      solve( !KU( ~x ) @ #vk.7 )
+        case A_1
+        SOLVED // trace found
+      qed
+    qed
+  qed
+qed
+
+lemma injectiveagreementRESPONDER:
+  all-traces
+  "∀ a b x y #i.
+    (Commit( a, b, <'R', 'I', x, y> ) @ #i) ⇒
+    ((∃ #j.
+       (Running( b, a, <'R', 'I', x, y> ) @ #j) ∧
+       (¬(∃ a2 b2 #i2.
+           (Commit( a2, b2, <'R', 'I', x, y> ) @ #i2) ∧ (¬(#i2 = #i))))) ∨
+     (∃ X #r. (Reveal( X ) @ #r) ∧ (Honest( X ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b x y #i.
+  (Commit( a, b, <'R', 'I', x, y> ) @ #i)
+ ∧
+  (∀ #j.
+    (Running( b, a, <'R', 'I', x, y> ) @ #j)
+   ⇒
+    ∃ a2 b2 #i2.
+     (Commit( a2, b2, <'R', 'I', x, y> ) @ #i2) ∧ ¬(#i2 = #i)) ∧
+  (∀ X #r. (Reveal( X ) @ #r) ∧ (Honest( X ) @ #i) ⇒ ⊥)"
+*/
+simplify
+solve( Commit( a, b, <'R', 'I', x, y> ) @ #i )
+  case B_3
+  solve( St_B_2( a, id, b, krecv, ksend, x, y ) ▶₀ #i )
+    case B_2
+    solve( !KU( senc(~y, ~k) ) @ #vk.2 )
+      case A_3
+      solve( !KU( ~y ) @ #vk.7 )
+        case B_2
+        SOLVED // trace found
+      qed
+    qed
+  qed
+qed
+
+/* All well-formedness checks were successful. */
+
+end
