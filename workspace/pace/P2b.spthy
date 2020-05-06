@@ -23,7 +23,7 @@ equations:
 rule Setup_PSK:
     [ Fr(~k)
     ]
-  --[ UnidirectionalKey($A, $B, ~k) ]->
+  -->
     [ !St_PSK($A, $B, ~k)
     ]
 
@@ -43,7 +43,8 @@ rule A_0:
     , !St_PSK(A, B, krecv)
     , !St_PSK(B, A, ksend)
     ]
-  --[ Create(~id, 'I') ]->
+  --[ Create(~id, 'I')
+    , RegisterKeys(A, B, krecv, ksend) ]->
     [ St_A_0(A, ~id, B, krecv, ksend)
     ]
 
@@ -53,7 +54,8 @@ rule B_0:
     , !St_PSK(B, A, krecv)
     , !St_PSK(A, B, ksend)
     ]
-  --[ Create(~id, 'R') ]->
+  --[ Create(~id, 'R')
+    , RegisterKeys(B, A, krecv, ksend) ]->
     [ St_B_0(B, ~id, A, krecv, ksend)
     ]
 
@@ -140,10 +142,9 @@ rule A_4:
     ]
 
 restriction UnidirectionalKeys:
-  "All a b k #i.
-    UnidirectionalKey(a, b, k) @i
-      & UnidirectionalKey(b, a, k) @i
-      & not (a = b)
+  "All a b kab kba #i.
+    RegisterKeys(a, b, kab, kba) @i
+    & kab = kba
       ==> F"
 
 /* Executability lemma gets verified. */
@@ -169,9 +170,9 @@ lemma injectiveagreementINITIATOR:
 /* Injective agreement of B with A on both nonces x and y does get verified. */
 lemma injectiveagreementRESPONDER:
   "All a b x y #i.
-    Commit(a,b,<'R','I',y,x>) @i
-    ==> (Ex #j. Running(b,a,<'R','I',y,x>) @j
-              & not (Ex a2 b2 #i2. Commit(a2,b2,<'R','I',y,x>) @i2
+    Commit(a,b,<'R','I',x,y>) @i
+    ==> (Ex #j. Running(b,a,<'R','I',x,y>) @j
+              & not (Ex a2 b2 #i2. Commit(a2,b2,<'R','I',x,y>) @i2
                                  & not (#i2 = #i)))
               | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
 

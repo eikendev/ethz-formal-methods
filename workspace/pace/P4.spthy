@@ -169,9 +169,9 @@ lemma injectiveagreementINITIATOR:
 /* Injective agreement of B with A on both nonces x and y does get verified. */
 lemma injectiveagreementRESPONDER:
   "All a b x y Kab #i.
-    Commit(a,b,<'R','I',Kab,y,x>) @i
-    ==> (Ex #j. Running(b,a,<'R','I',Kab,y,x>) @j
-              & not (Ex a2 b2 #i2. Commit(a2,b2,<'R','I',Kab,y,x>) @i2
+    Commit(a,b,<'R','I',Kab,x,y>) @i
+    ==> (Ex #j. Running(b,a,<'R','I',Kab,x,y>) @j
+              & not (Ex a2 b2 #i2. Commit(a2,b2,<'R','I',Kab,x,y>) @i2
                                  & not (#i2 = #i)))
               | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
 

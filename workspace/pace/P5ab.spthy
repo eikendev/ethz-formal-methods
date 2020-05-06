@@ -1,0 +1,206 @@
+theory P5ab
+begin
+
+section{* P5 protocol *}
+
+/*
+ * A -> B : g^x, [s]h(K(A, B)), p
+ * B -> A : g^y
+ * A -> B : ['I', 'R', g^xy]Kab
+ * B -> A : ['R', 'I', g^xy]Kab
+ */
+
+builtins:
+  hashing, symmetric-encryption, diffie-hellman
+
+functions:
+  hmac/2, map/2
+
+equations:
+  hmac(m, k) = senc(m, k)
+
+/* Set up long term pre-shared key for A and B. */
+rule Setup_PSK:
+    [ Fr(~ltk)
+    ]
+  -->
+    [ !St_PSK($A, $B, ~ltk)
+    ]
+
+rule Reveal_PSK_A:
+    [ !St_PSK(A, B, ltk) ]
+  --[ Reveal(A) ]->
+    [ Out(ltk) ]
+
+rule Reveal_PSK_B:
+    [ !St_PSK(A, B, ltk) ]
+  --[ Reveal(B) ]->
+    [ Out(ltk) ]
+
+/* Initialize thread for role A. */
+rule A_0:
+    [ Fr(~id)
+    , !St_PSK(A, B, ltk)
+    ]
+  --[ Create(~id, 'I') ]->
+    [ St_A_0(A, ~id, B, ltk)
+    ]
+
+/* Initialize thread for role B. */
+rule B_0:
+    [ Fr(~id)
+    , !St_PSK(A, B, ltk)
+    ]
+  --[ Create(~id, 'R') ]->
+    [ St_B_0(B, ~id, A, ltk)
+    ]
+
+/* Send the nonce x from role A to role B. */
+rule A_1:
+    let g = map(~s, $p)
+    in
+    [ Fr(~x)
+    , Fr(~s)
+    , St_A_0(A, id, B, ltk)
+    ]
+  -->
+    [ St_A_1(A, id, B, ltk, $p, ~s, ~x)
+    , Out(<'DH_PARAMS', g^~x, senc(~s, h(ltk)), $p>)
+    ]
+
+/* Receive nonce x from role A. */
+rule B_1:
+    let g = map(s, $p)
+    in
+    [ St_B_0(B, id, A, ltk)
+    , In(<'DH_PARAMS', ga, senc(s, h(ltk)), $p>)
+    ]
+  -->
+    [ St_B_1(B, id, A, ltk, $p, s, ga)
+    ]
+
+/* Send the nonce y from role B to role A. */
+rule B_2:
+    let g = map(s, $p)
+        Kab = h(ga^~y)
+    in
+    [ Fr(~y)
+    , St_B_1(B, id, A, ltk, $p, s, ga)
+    ]
+  --[ Running(B, A, <'I', 'R', Kab, ga, g^~y>) ]->
+    [ St_B_2(B, id, A, ltk, $p, s, ga, ~y, Kab)
+    , Out(<'DH_HALFKEY', g^~y>)
+    ]
+
+/* Receive nonce y from role B. */
+rule A_2:
+    let g = map(s, $p)
+        Kab = h(gb^x)
+    in
+    [ St_A_1(A, id, B, ltk, $p, s, x)
+    , In(<'DH_HALFKEY', gb>)
+    ]
+  --[ Running(A, B, <'R', 'I', Kab, g^x, gb>) ]->
+    [ St_A_2(A, id, B, ltk, $p, s, x, gb, Kab)
+    ]
+
+/* Return the HMAC of the nonce y to role B. */
+rule A_3:
+    let g = map(s, $p)
+    in
+    [ St_A_2(A, id, B, ltk, $p, s, x, gb, Kab)
+    ]
+  -->
+    [ St_A_3(A, id, B, ltk, $p, s, x, gb, Kab)
+    , Out(<'HMAC', hmac(<'I', 'R', gb>, Kab)>)
+    ]
+
+/* Receive the HMAC of y from role A. */
+rule B_3:
+    let g = map(s, $p)
+    in
+    [ St_B_2(B, id, A, ltk, $p, s, ga, y, Kab)
+    , In(<'HMAC', hmac(<'I', 'R', g^y>, Kab)>)
+    ]
+  --[ Commit(B, A, <'R', 'I', Kab, ga, g^y>)
+    , Honest(B)
+    , Honest(A)
+    ]->
+    [ St_B_3(B, id, A, ltk, $p, s, ga, y, Kab)
+    ]
+
+/* Return the HMAC of the nonce x to role A. */
+rule B_4:
+    let g = map(s, $p)
+    in
+    [ St_B_3(B, id, A, ltk, $p, s, ga, y, Kab)
+    ]
+  --[ Finish(B, A, 'R', ltk, ga, g^y)
+    , Honest(B)
+    , Honest(A)
+    , Secret(B, Kab)
+    ]->
+    [ St_B_4(B, id, A, ltk, $p, s, ga, y, Kab)
+    , Out(<'HMAC', hmac(<'R', 'I', ga>, Kab)>)
+    ]
+
+/* Receive the HMAC of x from role B. */
+rule A_4:
+    let g = map(s, $p)
+    in
+    [ St_A_3(A, id, B, ltk, $p, s, x, gb, Kab)
+    , In(<'HMAC', hmac(<'R', 'I', g^x>, Kab)>)
+    ]
+  --[ Commit(A, B, <'I', 'R', Kab, g^x, gb>)
+    , Honest(A)
+    , Honest(B)
+    , Secret(A, Kab)
+    , Finish(A, B, 'I', ltk, g^x, gb)
+    ]->
+    [ St_A_4(A, id, B, ltk, $p, s, x, gb, Kab)
+    ]
+
+/* Executability lemma gets verified. */
+lemma executable:
+  exists-trace
+    "Ex a b ga gb ltk #i #j.
+      Finish(b, a, 'R', ltk, ga, gb) @i
+      & Finish(a, b, 'I', ltk, ga, gb) @j
+      & (All id1 id2 #k1 #k2. Create(id1, 'I') @k1 & Create(id2, 'I') @k2 ==> id1 = id2)
+      & (All id1 id2 #k1 #k2. Create(id1, 'R') @k1 & Create(id2, 'R') @k2 ==> id1 = id2)
+      & not(a = b)
+      & not(Ex X #k. Reveal(X)@k)"
+
+/* Injective agreement of A with B on both DH halfkeys does get verified. */
+lemma injectiveagreementINITIATOR:
+  "All a b ga gb Kab #i.
+    Commit(a,b,<'I','R',Kab,ga,gb>) @i
+    ==> (Ex #j. Running(b,a,<'I','R',Kab,ga,gb>) @j
+        & not (Ex a2 b2 #i2. Commit(a2,b2,<'I','R',Kab,ga,gb>) @i2
+                           & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Injective agreement of B with A on both DH halfkeys does get verified. */
+lemma injectiveagreementRESPONDER:
+  "All a b ga gb Kab #i.
+    Commit(a,b,<'R','I',Kab,ga,gb>) @i
+    ==> (Ex #j. Running(b,a,<'R','I',Kab,ga,gb>) @j
+              & not (Ex a2 b2 #i2. Commit(a2,b2,<'R','I',Kab,ga,gb>) @i2
+                                 & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Secrecy of the key does get verified. */
+lemma secrecy:
+  "All A x #i.
+    Secret(A,x) @i ==>
+    not (Ex #j. K(x)@j)
+        | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* PFS of the key does get verified. */
+lemma secrecy_PFS:
+  "All A x #i.
+    Secret(A,x) @i ==>
+    not (Ex #j. K(x)@j)
+        | (Ex X #r. Reveal(X)@r & Honest(X) @i & r < i)"
+
+end
