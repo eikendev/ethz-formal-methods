@@ -1,0 +1,132 @@
+theory OTR2
+begin
+
+section{* OTR protocol *}
+
+/*
+ * A -> B : {g^x}sk(A), pk(A)
+ * B -> A : {g^y}sk(B), pk(B)
+ */
+
+builtins:
+  signing, hashing, diffie-hellman
+
+/* Set up signing keypairs for all parties. */
+rule Setup_Keypair:
+    [ Fr(~sk)
+    ]
+  -->
+    [ !Ltk($A, ~sk)
+    , !Pk($A, pk(~sk))
+    , Out(pk(~sk))
+    ]
+
+rule Reveal_SK:
+    [ !Ltk(A, sk)
+    ]
+  --[ Reveal(A) ]->
+    [ Out(sk)
+    ]
+
+/* Initialize thread for role A. */
+rule A_0:
+    [ Fr(~id)
+    , !Ltk(A, sk)
+    , !Pk(B, pkB)
+    ]
+  --[ Create(~id, 'I') ]->
+    [ St_A_0(A, ~id, B, sk, pkB)
+    ]
+
+/* Initialize thread for role B. */
+rule B_0:
+    [ Fr(~id)
+    , !Ltk(B, sk)
+    , !Pk(A, pkA)
+    ]
+  --[ Create(~id, 'R') ]->
+    [ St_B_0(B, ~id, A, sk, pkA)
+    ]
+
+/* Send a's halfkey to b. */
+rule A_1:
+    [ Fr(~x)
+    , St_A_0(A, id, B, sk, pkB)
+    ]
+  -->
+    [ St_A_1(A, id, B, sk, pkB, ~x)
+    , Out(<'g'^~x, sign('g'^~x, sk), pk(sk)>)
+    ]
+
+/* Receive a's signed halfkey. */
+rule B_1:
+    [ St_B_0(B, id, A, sk, pkA)
+    , In(<ga, sig, pkA>)
+    ]
+  --[ Eq(verify(sig, ga, pkA), true)
+    ]->
+    [ St_B_1(B, id, A, sk, pkA, ga)
+    ]
+
+/* Send b's halfkey to a. */
+rule B_2:
+    let Kab = h(ga^~y)
+    in
+    [ Fr(~y)
+    , St_B_1(B, id, A, sk, pkA, ga)
+    ]
+  --[ Secret(B, Kab)
+    , Running(B, A, <'I', 'R', Kab, ga, 'g'^~y>)
+    , Honest(B)
+    , Honest(A)
+    ]->
+    [ St_B_2(B, id, A, sk, pkA, ga, ~y, Kab)
+    , Out(<'g'^~y, sign('g'^~y, sk), pk(sk)>)
+    ]
+
+/* Receive b's signed halfkey. */
+rule A_2:
+    let Kab = h(gb^x)
+    in
+    [ St_A_1(A, id, B, sk, pkB, x)
+    , In(<gb, sig, pkB>)
+    ]
+  --[ Eq(verify(sig, gb, pkB), true)
+    , Commit(A, B, <'I', 'R', Kab, 'g'^x, gb>)
+    , Secret(A, Kab)
+    , Honest(A)
+    , Honest(B)
+    ]->
+    [ St_A_2(A, id, B, sk, pkB, x, gb, Kab)
+    ]
+
+/* Executability lemma gets verified. */
+lemma executability:
+  exists-trace
+    "Ex A B Kab #i #j.
+      Secret(A, Kab)@i
+      & Secret(B, Kab)@j
+      & (All id1 id2 #k1 #k2. Create(id1, 'I') @k1 & Create(id2, 'I') @k2 ==> id1 = id2)
+      & (All id1 id2 #k1 #k2. Create(id1, 'R') @k1 & Create(id2, 'R') @k2 ==> id1 = id2)
+      & not (A = B)
+      & not (Ex X #k. Reveal(X)@k)"
+
+/* This lemma is allowed to be non-standard. */
+/* TODO: Does it get verified? */
+/* TODO: Is it the trace we need? */
+lemma injectiveagreementINITIATOR:
+  "All a b Kab ga gb #i.
+    Commit(a,b,<'I','R',Kab,ga,gb>) @i
+      & (All id1 id2 #k1 #k2. Create(id1, 'I') @k1 & Create(id2, 'I') @k2 ==> id1 = id2)
+      & (All id1 id2 #k1 #k2. Create(id1, 'R') @k1 & Create(id2, 'R') @k2 ==> id1 = id2)
+      & (Ex a3 b3 #j. Running(b3,a3,<'I','R',Kab,ga,gb> ) @j)
+      & not (a = b)
+    ==> (Ex #j. Running(b,a,<'I','R',Kab,ga,gb>) @j
+        & not (Ex a2 b2 #i2. Commit(a2,b2,<'I','R',Kab,ga,gb>) @i2
+                           & not (#i2 = #i)))
+            | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+restriction Equality:
+  "All x y #i. Eq(x,y) @i ==> x = y"
+
+end
