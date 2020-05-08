@@ -3,7 +3,7 @@ tamarin:
 	podman run \
 		--rm \
 		-P \
-		-v ./workspace/pace:/workspace \
+		-v ./workspace/otr:/workspace \
 		--security-opt label=disable \
 		--net=host \
 		eikendev/tamarin-prover
