@@ -4,8 +4,8 @@ begin
 section{* OTR protocol *}
 
 /*
- * A -> B : {g^x}sk(A), pk(A)
- * B -> A : {g^y}sk(B), pk(B)
+ * A -> B : g^x, {g^x}sk(A), pk(A)
+ * B -> A : g^y, {g^y}sk(B), pk(B)
  */
 
 builtins:
@@ -100,6 +100,9 @@ rule A_2:
     [ St_A_2(A, id, B, sk, pkB, x, gb, Kab)
     ]
 
+restriction Equality:
+  "All x y #i. Eq(x,y) @i ==> x = y"
+
 /* Executability lemma gets verified. */
 lemma executability:
   exists-trace
@@ -125,8 +128,5 @@ lemma injectiveagreementINITIATOR:
         & not (Ex a2 b2 #i2. Commit(a2,b2,<'I','R',Kab,ga,gb>) @i2
                            & not (#i2 = #i)))
             | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
-
-restriction Equality:
-  "All x y #i. Eq(x,y) @i ==> x = y"
 
 end

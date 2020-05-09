@@ -1,0 +1,168 @@
+theory OTR3
+begin
+
+section{* OTR protocol *}
+
+/*
+ * A -> B : g^x, {g^x, B}sk(A), pk(A)
+ * B -> A : g^y, {g^y, A}sk(B), pk(B)
+ */
+
+builtins:
+  signing, hashing, diffie-hellman
+
+/* Set up signing keypairs for all parties. */
+rule Setup_Keypair:
+    [ Fr(~sk)
+    ]
+  -->
+    [ !Ltk($A, ~sk)
+    , !Pk($A, pk(~sk))
+    , Out(pk(~sk))
+    ]
+
+rule Reveal_SK:
+    [ !Ltk(A, sk)
+    ]
+  --[ Reveal(A) ]->
+    [ Out(sk)
+    ]
+
+/* Initialize thread for role A. */
+rule A_0:
+    [ Fr(~id)
+    , !Ltk(A, sk)
+    , !Pk(B, pkB)
+    ]
+  --[ Create(~id, 'I') ]->
+    [ St_A_0(A, ~id, B, sk, pkB)
+    ]
+
+/* Initialize thread for role B. */
+rule B_0:
+    [ Fr(~id)
+    , !Ltk(B, sk)
+    , !Pk(A, pkA)
+    ]
+  --[ Create(~id, 'R') ]->
+    [ St_B_0(B, ~id, A, sk, pkA)
+    ]
+
+/* Send a's halfkey to b. */
+rule A_1:
+    [ Fr(~x)
+    , St_A_0(A, id, B, sk, pkB)
+    ]
+  --[ RunningHalfkey(A, B, <'R', 'I', 'g'^~x>) ]->
+    [ St_A_1(A, id, B, sk, pkB, ~x)
+    , Out(<'g'^~x, sign(<'I', 'g'^~x, B>, sk), pk(sk)>)
+    ]
+
+/* Receive a's signed halfkey. */
+rule B_1:
+    [ St_B_0(B, id, A, sk, pkA)
+    , In(<ga, sig, pkA>)
+    ]
+  --[ Eq(verify(sig, <'I', ga, B>, pkA), true)
+    ]->
+    [ St_B_1(B, id, A, sk, pkA, ga)
+    ]
+
+/* Send b's halfkey to a. */
+rule B_2:
+    let Kab = h(ga^~y)
+    in
+    [ Fr(~y)
+    , St_B_1(B, id, A, sk, pkA, ga)
+    ]
+  --[ Secret(B, Kab)
+    , Running(B, A, <'I', 'R', Kab, ga, 'g'^~y>)
+    , RunningHalfkey(B, A, <'I', 'R', 'g'^~y>)
+    , CommitHalfkey(B, A, <'R', 'I', ga>)
+    , Honest(B)
+    , Honest(A)
+    ]->
+    [ St_B_2(B, id, A, sk, pkA, ga, ~y, Kab)
+    , Out(<'g'^~y, sign(<'R', 'g'^~y, A>, sk), pk(sk)>)
+    ]
+
+/* Receive b's signed halfkey. */
+rule A_2:
+    let Kab = h(gb^x)
+    in
+    [ St_A_1(A, id, B, sk, pkB, x)
+    , In(<gb, sig, pkB>)
+    ]
+  --[ Eq(verify(sig, <'R', gb, A>, pkB), true)
+    , Commit(A, B, <'I', 'R', Kab, 'g'^x, gb>)
+    , CommitHalfkey(A, B, <'I', 'R', gb>)
+    , Secret(A, Kab)
+    , Honest(A)
+    , Honest(B)
+    ]->
+    [ St_A_2(A, id, B, sk, pkB, x, gb, Kab)
+    ]
+
+restriction Equality:
+  "All x y #i. Eq(x,y) @i ==> x = y"
+
+/* Executability lemma gets verified. */
+lemma executability:
+  exists-trace
+    "Ex A B Kab #i #j.
+      Secret(A, Kab)@i
+      & Secret(B, Kab)@j
+      & (All id1 id2 #k1 #k2. Create(id1, 'I') @k1 & Create(id2, 'I') @k2 ==> id1 = id2)
+      & (All id1 id2 #k1 #k2. Create(id1, 'R') @k1 & Create(id2, 'R') @k2 ==> id1 = id2)
+      & not (A = B)
+      & not (Ex X #k. Reveal(X)@k)"
+
+/* Injective agreement of A on the key and halfkeys with B does not get verified. */
+lemma injectiveagreementINITIATOR:
+  "All a b Kab ga gb #i.
+    Commit(a,b,<'I','R',Kab,ga,gb>) @i
+    ==> (Ex #j. Running(b,a,<'I','R',Kab,ga,gb>) @j
+        & not (Ex a2 b2 #i2. Commit(a2,b2,<'I','R',Kab,ga,gb>) @i2
+                           & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Injective agreement of B on the halfkey of A with A does not get verified. */
+lemma injectiveagreementhalfkeyRESPONDER:
+  "All a b ga #i.
+    CommitHalfkey(a,b,<'R','I',ga>) @i
+    ==> (Ex #j. RunningHalfkey(b,a,<'R','I',ga>) @j
+        & not (Ex a2 b2 #i2. CommitHalfkey(a2,b2,<'R','I',ga>) @i2
+                           & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Noninjective agreement of A on the key and halfkeys with B does not get verified. */
+lemma noninjectiveagreementINITIATOR:
+  "All a b Kab ga gb #i.
+    Commit(a,b,<'I','R',Kab,ga,gb>) @i
+    ==> (Ex #j. Running(b,a,<'I','R',Kab,ga,gb>) @j)
+        | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Noninjective agreement of B on the halfkey of A with A does get verified. */
+lemma noninjectiveagreementhalfkeyRESPONDER:
+  "All a b ga #i.
+    CommitHalfkey(a,b,<'R','I',ga>) @i
+    ==> (Ex #j. RunningHalfkey(b,a,<'R','I',ga>) @j)
+        | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Noninjective agreement of A on the halfkey of B with B does get verified. */
+lemma noninjectiveagreementhalfkeyINITIATOR:
+  "All a b gb #i.
+    CommitHalfkey(a,b,<'I','R',gb>) @i
+    ==> (Ex #j. RunningHalfkey(b,a,<'I','R',gb>) @j)
+        | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Injective agreement of A on the halfkey of B with B does not get verified. */
+lemma injectiveagreementhalfkeyINITIATOR:
+  "All a b gb #i.
+    CommitHalfkey(a,b,<'I','R',gb>) @i
+    ==> (Ex #j. RunningHalfkey(b,a,<'I','R',gb>) @j
+        & not (Ex a2 b2 #i2. CommitHalfkey(a2,b2,<'I','R',gb>) @i2
+                           & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+end
