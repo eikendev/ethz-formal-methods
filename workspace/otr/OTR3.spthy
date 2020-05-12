@@ -4,6 +4,10 @@ begin
 section{* OTR protocol *}
 
 /*
+ * TODO: Check if the attacks found match those in the report.
+ */
+
+/*
  * A -> B : g^x, {g^x, B}sk(A), pk(A)
  * B -> A : g^y, {g^y, A}sk(B), pk(B)
  */
@@ -55,7 +59,7 @@ rule A_1:
     ]
   --[ RunningHalfkey(A, B, <'R', 'I', 'g'^~x>) ]->
     [ St_A_1(A, id, B, sk, pkB, ~x)
-    , Out(<'g'^~x, sign(<'I', 'g'^~x, B>, sk), pk(sk)>)
+    , Out(<'g'^~x, sign(<'g'^~x, B>, sk), pk(sk)>)
     ]
 
 /* Receive a's signed halfkey. */
@@ -63,7 +67,7 @@ rule B_1:
     [ St_B_0(B, id, A, sk, pkA)
     , In(<ga, sig, pkA>)
     ]
-  --[ Eq(verify(sig, <'I', ga, B>, pkA), true)
+  --[ Eq(verify(sig, <ga, B>, pkA), true)
     ]->
     [ St_B_1(B, id, A, sk, pkA, ga)
     ]
@@ -83,7 +87,7 @@ rule B_2:
     , Honest(A)
     ]->
     [ St_B_2(B, id, A, sk, pkA, ga, ~y, Kab)
-    , Out(<'g'^~y, sign(<'R', 'g'^~y, A>, sk), pk(sk)>)
+    , Out(<'g'^~y, sign(<'g'^~y, A>, sk), pk(sk)>)
     ]
 
 /* Receive b's signed halfkey. */
@@ -93,7 +97,7 @@ rule A_2:
     [ St_A_1(A, id, B, sk, pkB, x)
     , In(<gb, sig, pkB>)
     ]
-  --[ Eq(verify(sig, <'R', gb, A>, pkB), true)
+  --[ Eq(verify(sig, <gb, A>, pkB), true)
     , Commit(A, B, <'I', 'R', Kab, 'g'^x, gb>)
     , CommitHalfkey(A, B, <'I', 'R', gb>)
     , Secret(A, Kab)

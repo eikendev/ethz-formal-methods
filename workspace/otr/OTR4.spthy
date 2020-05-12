@@ -1,0 +1,207 @@
+theory OTR4
+begin
+
+section{* OTR protocol *}
+
+/*
+ * A -> B : g^x
+ * B -> A : g^y
+ * A -> B : A, {g^y, g^x}sk(A), hmac(<"0", A>, Km), pk(A)
+ * B -> A : B, {g^x, g^y}sk(B), hmac(<"1", B>, Km), pk(B)
+ */
+
+builtins:
+  signing, hashing, diffie-hellman, symmetric-encryption
+
+functions:
+  hmac/2
+
+equations:
+  hmac(m, k) = senc(m, k)
+
+/* Set up signing keypairs for all parties. */
+rule Setup_Keypair:
+    [ Fr(~sk)
+    ]
+  -->
+    [ !Ltk($A, ~sk)
+    , !Pk($A, pk(~sk))
+    , Out(pk(~sk))
+    ]
+
+rule Reveal_SK:
+    [ !Ltk(A, sk)
+    ]
+  --[ Reveal(A) ]->
+    [ Out(sk)
+    ]
+
+/* Initialize thread for role A. */
+rule A_0:
+    [ Fr(~id)
+    , !Ltk(A, sk)
+    , !Pk(B, pkB)
+    ]
+  --[ Create(~id, 'I') ]->
+    [ St_A_0(A, ~id, B, sk, pkB)
+    ]
+
+/* Initialize thread for role B. */
+rule B_0:
+    [ Fr(~id)
+    , !Ltk(B, sk)
+    , !Pk(A, pkA)
+    ]
+  --[ Create(~id, 'R') ]->
+    [ St_B_0(B, ~id, A, sk, pkA)
+    ]
+
+/* Send a's halfkey to b. */
+rule A_1:
+    [ Fr(~x)
+    , St_A_0(A, id, B, sk, pkB)
+    ]
+  -->
+    [ St_A_1(A, id, B, sk, pkB, ~x)
+    , Out(<'g'^~x>)
+    ]
+
+/* Receive a's halfkey. */
+rule B_1:
+    [ St_B_0(B, id, A, sk, pkA)
+    , In(ga)
+    ]
+  -->
+    [ St_B_1(B, id, A, sk, pkA, ga)
+    ]
+
+/* Send b's halfkey to a. */
+rule B_2:
+    let Km = h(ga^~y)
+    in
+    [ Fr(~y)
+    , St_B_1(B, id, A, sk, pkA, ga)
+    ]
+  --[ Running(B, A, <'I', 'R', Km>)
+    , Honest(B)
+    , Honest(A)
+    ]->
+    [ St_B_2(B, id, A, sk, pkA, ga, ~y)
+    , Out('g'^~y)
+    ]
+
+/* Receive b's halfkey. */
+rule A_2:
+    let Km = h(gb^x)
+    in
+    [ St_A_1(A, id, B, sk, pkB, x)
+    , In(gb)
+    ]
+  --[ Running(A, B, <'R', 'I', Km>)
+    , Honest(A)
+    , Honest(B)
+    ]->
+    [ St_A_2(A, id, B, sk, pkB, x, gb, Km)
+    ]
+
+/* Send the signed nonces, and the HMAC of A's identity. */
+rule A_3:
+    let Km = h(gb^x)
+    in
+    [ St_A_2(A, id, B, sk, pkB, x, gb, Km)
+    ]
+  -->
+    [ St_A_3(A, id, B, sk, pkB, x, gb, Km)
+    , Out(<A, sign(<gb, 'g'^x>, sk), hmac(<'0', A>, Km), pk(sk)>)
+    ]
+
+/* Receive the signed nonces, and the HMAC of A's identity. */
+rule B_3:
+    let Km = h(ga^y)
+    in
+    [ St_B_2(B, id, A, sk, pkA, ga, y)
+    , In(<A, sig, hmac(<'0', A>, Km), pkA>)
+    ]
+  --[ Eq(verify(sig, <'g'^y, ga>, pkA), true)
+    , Commit(B, A, <'R', 'I', Km>)
+    , Secret(B, Km)
+    , Honest(B)
+    , Honest(A)
+    ]->
+    [ St_B_3(B, id, A, sk, pkA, ga, y, Km)
+    ]
+
+/* Send the signed nonces, and the HMAC of B's identity. */
+rule B_4:
+    let Km = h(ga^y)
+    in
+    [ St_B_3(B, id, A, sk, pkA, ga, y, Km)
+    ]
+  -->
+    [ St_B_4(B, id, A, sk, pkA, ga, y, Km)
+    , Out(<B, sign(<ga, 'g'^y>, sk), hmac(<'1', B>, Km), pk(sk)>)
+    ]
+
+/* Receive the signed nonces, and the HMAC of B's identity. */
+rule A_4:
+    let Km = h(gb^x)
+    in
+    [ St_A_3(A, id, B, sk, pkB, x, gb, Km)
+    , In(<B, sig, hmac(<'1', B>, Km), pkB>)
+    ]
+  --[ Eq(verify(sig, <'g'^x, gb>, pkB), true)
+    , Commit(A, B, <'I', 'R', Km>)
+    , Secret(A, Km)
+    , Honest(A)
+    , Honest(B)
+    ]->
+    [ St_A_4(A, id, B, sk, pkB, x, gb, Km)
+    ]
+
+restriction Equality:
+  "All x y #i. Eq(x,y) @i ==> x = y"
+
+/* Executability lemma gets verified. */
+lemma executability:
+  exists-trace
+    "Ex A B Km #i #j.
+        Secret(A, Km)@i
+      & Secret(B, Km)@j
+      & (All id1 id2 #k1 #k2. Create(id1, 'I') @k1 & Create(id2, 'I') @k2 ==> id1 = id2)
+      & (All id1 id2 #k1 #k2. Create(id1, 'R') @k1 & Create(id2, 'R') @k2 ==> id1 = id2)
+      & not (A = B)
+      & not (Ex X #k. Reveal(X)@k)"
+
+/* Injective agreement of A on the key with B does get verified. */
+lemma injectiveagreementINITIATOR:
+  "All a b Km #i.
+    Commit(a,b,<'I','R',Km>) @i
+    ==> (Ex #j. Running(b,a,<'I','R',Km>) @j
+        & not (Ex a2 b2 #i2. Commit(a2,b2,<'I','R',Km>) @i2
+                           & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Injective agreement of B on the key with A does not get verified. */
+lemma injectiveagreementRESPONDER:
+  "All a b Km #i.
+    Commit(a,b,<'R','I',Km>) @i
+    ==> (Ex #j. Running(b,a,<'R','I',Km>) @j
+              & not (Ex a2 b2 #i2. Commit(a2,b2,<'R','I',Km>) @i2
+                                 & not (#i2 = #i)))
+              | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* Secrecy of the key does get verified. */
+lemma secrecy:
+  "All A x #i.
+    Secret(A,x) @i ==>
+    not (Ex #j. K(x)@j)
+        | (Ex X #r. Reveal(X)@r & Honest(X) @i)"
+
+/* PFS of the key does get verified. */
+lemma secrecy_PFS:
+  "All A x #i.
+    Secret(A,x) @i ==>
+    not (Ex #j. K(x)@j)
+        | (Ex X #r. Reveal(X)@r & Honest(X) @i & r < i)"
+
+end
