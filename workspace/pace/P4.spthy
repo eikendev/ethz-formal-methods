@@ -4,7 +4,7 @@ begin
 section{* P4 protocol *}
 
 /*
- * A -> B : x, [s]h(K(A, B))
+ * A -> B : x, [s]h(k(A, B))
  * B -> A : y
  * A -> B : ['I', 'R', y]Kab
  * B -> A : ['R', 'I', x]Kab

@@ -105,7 +105,7 @@ lemma executable:
   exists-trace
     "Ex #i. Finish() @i & not (Ex A #j. Reveal(A)@j)"
 
-/* Injective agreement of A with B on nonce x lemma gets verified. */
+/* Injective agreement of A with B on nonce x gets verified. */
 lemma injectiveagreementINITIATOR:
   "All a b t #i.
     Commit(a,b,<'I','R',t>) @i

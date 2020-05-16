@@ -6,8 +6,8 @@ section{* P5 protocol *}
 /*
  * A -> B : g^x, [s]h(K(A, B)), p
  * B -> A : g^y
- * A -> B : ['I', 'R', g^xy]Kab
- * B -> A : ['R', 'I', g^xy]Kab
+ * A -> B : ['I', 'R', g^y]Kab
+ * B -> A : ['R', 'I', g^x]Kab
  */
 
 builtins:

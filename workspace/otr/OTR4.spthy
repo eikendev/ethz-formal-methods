@@ -1,7 +1,7 @@
 theory OTR4
 begin
 
-section{* OTR protocol *}
+section{* SIGMA protocol *}
 
 /*
  * A -> B : g^x

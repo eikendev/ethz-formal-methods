@@ -115,8 +115,7 @@ lemma executability:
       & not (Ex X #k. Reveal(X)@k)"
 
 /* This lemma is allowed to be non-standard. */
-/* TODO: Does it get verified? */
-/* TODO: Is it the trace we need? */
+/* Injective agreement on the shared secret and halfkeys lemma does not get verified. */
 lemma injectiveagreementINITIATOR:
   "All a b Kab ga gb #i.
     Commit(a,b,<'I','R',Kab,ga,gb>) @i
