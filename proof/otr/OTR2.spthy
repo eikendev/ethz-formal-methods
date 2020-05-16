@@ -1,0 +1,1032 @@
+theory OTR2 begin
+
+// Function signature and definition of the equational theory E
+
+builtins: diffie-hellman
+functions: fst/1, h/1, pair/2, pk/1, sign/2, snd/1, true/0,
+           verify/3
+equations:
+    fst(<x.1, x.2>) = x.1,
+    snd(<x.1, x.2>) = x.2,
+    verify(sign(x.1, x.2), x.1, pk(x.2)) = true
+
+
+
+section{* OTR protocol *}
+
+rule (modulo E) Setup_Keypair:
+   [ Fr( ~sk ) ]
+  -->
+   [ !Ltk( $A, ~sk ), !Pk( $A, pk(~sk) ), Out( pk(~sk) ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) Reveal_SK:
+   [ !Ltk( A, sk ) ] --[ Reveal( A ) ]-> [ Out( sk ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) A_0:
+   [ Fr( ~id ), !Ltk( A, sk ), !Pk( B, pkB ) ]
+  --[ Create( ~id, 'I' ) ]->
+   [ St_A_0( A, ~id, B, sk, pkB ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) B_0:
+   [ Fr( ~id ), !Ltk( B, sk ), !Pk( A, pkA ) ]
+  --[ Create( ~id, 'R' ) ]->
+   [ St_B_0( B, ~id, A, sk, pkA ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) A_1:
+   [ Fr( ~x ), St_A_0( A, id, B, sk, pkB ) ]
+  -->
+   [
+   St_A_1( A, id, B, sk, pkB, ~x ),
+   Out( <'g'^~x, sign('g'^~x, sk), pk(sk)> )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) B_1:
+   [ St_B_0( B, id, A, sk, pkA ), In( <ga, sig, pkA> ) ]
+  --[ Eq( verify(sig, ga, pkA), true ) ]->
+   [ St_B_1( B, id, A, sk, pkA, ga ) ]
+
+  /*
+  rule (modulo AC) B_1:
+     [ St_B_0( B, id, A, sk, pkA ), In( <ga, sig, pkA> ) ]
+    --[ Eq( z, true ) ]->
+     [ St_B_1( B, id, A, sk, pkA, ga ) ]
+    variants (modulo AC)
+    1. ga    = ga.9
+       pkA   = pkA.9
+       sig   = sig.9
+       z     = verify(sig.9, ga.9, pkA.9)
+    
+    2. ga    = x.9
+       pkA   = pk(x.11)
+       sig   = sign(x.9, x.11)
+       z     = true
+  */
+
+rule (modulo E) B_2:
+   [ Fr( ~y ), St_B_1( B, id, A, sk, pkA, ga ) ]
+  --[
+  Secret( B, h(ga^~y) ),
+  Running( B, A, <'I', 'R', h(ga^~y), ga, 'g'^~y> ), Honest( B ),
+  Honest( A )
+  ]->
+   [
+   St_B_2( B, id, A, sk, pkA, ga, ~y, h(ga^~y) ),
+   Out( <'g'^~y, sign('g'^~y, sk), pk(sk)> )
+   ]
+
+  /*
+  rule (modulo AC) B_2:
+     [ Fr( ~y ), St_B_1( B, id, A, sk, pkA, ga ) ]
+    --[
+    Secret( B, h(z) ), Running( B, A, <'I', 'R', h(z), ga, 'g'^~y> ),
+    Honest( B ), Honest( A )
+    ]->
+     [
+     St_B_2( B, id, A, sk, pkA, ga, ~y, h(z) ),
+     Out( <'g'^~y, sign('g'^~y, sk), pk(sk)> )
+     ]
+    variants (modulo AC)
+    1. ~y    = ~y.13
+       ga    = ga.16
+       z     = ga.16^~y.13
+    
+    2. ~y    = ~y.17
+       ga    = z.24^inv(~y.17)
+       z     = z.24
+    
+    3. ~y    = ~y.77
+       ga    = x.151^x.152
+       z     = x.151^(~y.77*x.152)
+    
+    4. ~y    = ~y.80
+       ga    = x.157^inv((~y.80*x.158))
+       z     = x.157^inv(x.158)
+    
+    5. ~y    = ~y.80
+       ga    = x.157^(x.158*inv(~y.80))
+       z     = x.157^x.158
+    
+    6. ~y    = ~y.81
+       ga    = x.158^(x.159*inv((~y.81*x.160)))
+       z     = x.158^(x.159*inv(x.160))
+  */
+
+rule (modulo E) A_2:
+   [ St_A_1( A, id, B, sk, pkB, x ), In( <gb, sig, pkB> ) ]
+  --[
+  Eq( verify(sig, gb, pkB), true ),
+  Commit( A, B, <'I', 'R', h(gb^x), 'g'^x, gb> ),
+  Secret( A, h(gb^x) ), Honest( A ), Honest( B )
+  ]->
+   [ St_A_2( A, id, B, sk, pkB, x, gb, h(gb^x) ) ]
+
+  /*
+  rule (modulo AC) A_2:
+     [ St_A_1( A, id, B, sk, pkB, x ), In( <gb, sig, pkB> ) ]
+    --[
+    Eq( z.1, true ), Commit( A, B, <'I', 'R', h(z), z.2, gb> ),
+    Secret( A, h(z) ), Honest( A ), Honest( B )
+    ]->
+     [ St_A_2( A, id, B, sk, pkB, x, gb, h(z) ) ]
+    variants (modulo AC)
+     1. gb    = gb.18
+        pkB   = pkB.20
+        sig   = sig.21
+        x     = one
+        z     = gb.18
+        z.1   = verify(sig.21, gb.18, pkB.20)
+        z.2   = 'g'
+    
+     2. gb    = gb.20
+        pkB   = pkB.22
+        sig   = sig.23
+        x     = x.25
+        z     = gb.20^x.25
+        z.1   = verify(sig.23, gb.20, pkB.22)
+        z.2   = 'g'^x.25
+    
+     3. gb    = gb.28
+        pkB   = pk(x.52)
+        sig   = sign(gb.28, x.52)
+        x     = x.33
+        z     = gb.28^x.33
+        z.1   = true
+        z.2   = 'g'^x.33
+    
+     4. gb    = gb.28
+        pkB   = pk(x.52)
+        sig   = sign(gb.28, x.52)
+        x     = one
+        z     = gb.28
+        z.1   = true
+        z.2   = 'g'
+    
+     5. gb    = x.19^(x.20*x.21)
+        pkB   = pk(x.23)
+        sig   = sign(x.19^(x.20*x.21), x.23)
+        x     = inv(x.20)
+        z     = x.19^x.21
+        z.1   = true
+        z.2   = 'g'^inv(x.20)
+    
+     6. gb    = x.20^x.21
+        pkB   = pk(x.23)
+        sig   = sign(x.20^x.21, x.23)
+        x     = inv((x.21*x.25))
+        z     = x.20^inv(x.25)
+        z.1   = true
+        z.2   = 'g'^inv((x.21*x.25))
+    
+     7. gb    = x.20^x.21
+        pkB   = pk(x.23)
+        sig   = sign(x.20^x.21, x.23)
+        x     = (x.25*inv(x.21))
+        z     = x.20^x.25
+        z.1   = true
+        z.2   = 'g'^(x.25*inv(x.21))
+    
+     8. gb    = x.20^inv(x.21)
+        pkB   = pk(x.23)
+        sig   = sign(x.20^inv(x.21), x.23)
+        x     = inv(x.25)
+        z     = x.20^inv((x.21*x.25))
+        z.1   = true
+        z.2   = 'g'^inv(x.25)
+    
+     9. gb    = x.20^inv(x.21)
+        pkB   = pk(x.23)
+        sig   = sign(x.20^inv(x.21), x.23)
+        x     = (x.21*x.25)
+        z     = x.20^x.25
+        z.1   = true
+        z.2   = 'g'^(x.21*x.25)
+    
+    10. gb    = x.20^(x.21*x.22*inv(x.23))
+        pkB   = pk(x.25)
+        sig   = sign(x.20^(x.21*x.22*inv(x.23)), x.25)
+        x     = (x.23*inv(x.21))
+        z     = x.20^x.22
+        z.1   = true
+        z.2   = 'g'^(x.23*inv(x.21))
+    
+    11. gb    = x.20^(x.21*inv((x.22*x.23)))
+        pkB   = pk(x.25)
+        sig   = sign(x.20^(x.21*inv((x.22*x.23))), x.25)
+        x     = (x.22*inv(x.21))
+        z     = x.20^inv(x.23)
+        z.1   = true
+        z.2   = 'g'^(x.22*inv(x.21))
+    
+    12. gb    = x.21^x.22
+        pkB   = pk(x.24)
+        sig   = sign(x.21^x.22, x.24)
+        x     = (x.26*inv((x.22*x.27)))
+        z     = x.21^(x.26*inv(x.27))
+        z.1   = true
+        z.2   = 'g'^(x.26*inv((x.22*x.27)))
+    
+    13. gb    = x.21^inv(x.22)
+        pkB   = pk(x.24)
+        sig   = sign(x.21^inv(x.22), x.24)
+        x     = (x.26*inv(x.27))
+        z     = x.21^(x.26*inv((x.22*x.27)))
+        z.1   = true
+        z.2   = 'g'^(x.26*inv(x.27))
+    
+    14. gb    = x.21^inv((x.22*x.23))
+        pkB   = pk(x.25)
+        sig   = sign(x.21^inv((x.22*x.23)), x.25)
+        x     = (x.22*x.27)
+        z     = x.21^(x.27*inv(x.23))
+        z.1   = true
+        z.2   = 'g'^(x.22*x.27)
+    
+    15. gb    = x.21^inv((x.22*x.23))
+        pkB   = pk(x.25)
+        sig   = sign(x.21^inv((x.22*x.23)), x.25)
+        x     = (x.22*inv(x.27))
+        z     = x.21^inv((x.23*x.27))
+        z.1   = true
+        z.2   = 'g'^(x.22*inv(x.27))
+    
+    16. gb    = x.21^(x.22*x.23)
+        pkB   = pk(x.25)
+        sig   = sign(x.21^(x.22*x.23), x.25)
+        x     = inv((x.22*x.27))
+        z     = x.21^(x.23*inv(x.27))
+        z.1   = true
+        z.2   = 'g'^inv((x.22*x.27))
+    
+    17. gb    = x.21^(x.22*x.23)
+        pkB   = pk(x.25)
+        sig   = sign(x.21^(x.22*x.23), x.25)
+        x     = (x.27*inv(x.22))
+        z     = x.21^(x.23*x.27)
+        z.1   = true
+        z.2   = 'g'^(x.27*inv(x.22))
+    
+    18. gb    = x.21^(x.22*x.23*inv((x.24*x.25)))
+        pkB   = pk(x.27)
+        sig   = sign(x.21^(x.22*x.23*inv((x.24*x.25))), x.27)
+        x     = (x.24*inv(x.22))
+        z     = x.21^(x.23*inv(x.25))
+        z.1   = true
+        z.2   = 'g'^(x.24*inv(x.22))
+    
+    19. gb    = x.21^(x.22*inv(x.23))
+        pkB   = pk(x.25)
+        sig   = sign(x.21^(x.22*inv(x.23)), x.25)
+        x     = inv(x.27)
+        z     = x.21^(x.22*inv((x.23*x.27)))
+        z.1   = true
+        z.2   = 'g'^inv(x.27)
+    
+    20. gb    = x.21^(x.22*inv(x.23))
+        pkB   = pk(x.25)
+        sig   = sign(x.21^(x.22*inv(x.23)), x.25)
+        x     = inv((x.22*x.27))
+        z     = x.21^inv((x.23*x.27))
+        z.1   = true
+        z.2   = 'g'^inv((x.22*x.27))
+    
+    21. gb    = x.21^(x.22*inv(x.23))
+        pkB   = pk(x.25)
+        sig   = sign(x.21^(x.22*inv(x.23)), x.25)
+        x     = (x.23*x.27)
+        z     = x.21^(x.22*x.27)
+        z.1   = true
+        z.2   = 'g'^(x.23*x.27)
+    
+    22. gb    = x.21^(x.22*inv(x.23))
+        pkB   = pk(x.25)
+        sig   = sign(x.21^(x.22*inv(x.23)), x.25)
+        x     = (x.23*x.27*inv(x.22))
+        z     = x.21^x.27
+        z.1   = true
+        z.2   = 'g'^(x.23*x.27*inv(x.22))
+    
+    23. gb    = x.21^(x.22*inv(x.23))
+        pkB   = pk(x.25)
+        sig   = sign(x.21^(x.22*inv(x.23)), x.25)
+        x     = (x.23*inv((x.22*x.27)))
+        z     = x.21^inv(x.27)
+        z.1   = true
+        z.2   = 'g'^(x.23*inv((x.22*x.27)))
+    
+    24. gb    = x.22^inv((x.23*x.24))
+        pkB   = pk(x.26)
+        sig   = sign(x.22^inv((x.23*x.24)), x.26)
+        x     = (x.23*x.28*inv(x.29))
+        z     = x.22^(x.28*inv((x.24*x.29)))
+        z.1   = true
+        z.2   = 'g'^(x.23*x.28*inv(x.29))
+    
+    25. gb    = x.22^(x.23*x.24)
+        pkB   = pk(x.26)
+        sig   = sign(x.22^(x.23*x.24), x.26)
+        x     = (x.28*inv((x.23*x.29)))
+        z     = x.22^(x.24*x.28*inv(x.29))
+        z.1   = true
+        z.2   = 'g'^(x.28*inv((x.23*x.29)))
+    
+    26. gb    = x.22^(x.23*x.24*inv(x.25))
+        pkB   = pk(x.27)
+        sig   = sign(x.22^(x.23*x.24*inv(x.25)), x.27)
+        x     = inv((x.23*x.29))
+        z     = x.22^(x.24*inv((x.25*x.29)))
+        z.1   = true
+        z.2   = 'g'^inv((x.23*x.29))
+    
+    27. gb    = x.22^(x.23*x.24*inv(x.25))
+        pkB   = pk(x.27)
+        sig   = sign(x.22^(x.23*x.24*inv(x.25)), x.27)
+        x     = (x.25*x.29*inv(x.23))
+        z     = x.22^(x.24*x.29)
+        z.1   = true
+        z.2   = 'g'^(x.25*x.29*inv(x.23))
+    
+    28. gb    = x.22^(x.23*x.24*inv(x.25))
+        pkB   = pk(x.27)
+        sig   = sign(x.22^(x.23*x.24*inv(x.25)), x.27)
+        x     = (x.25*inv((x.23*x.29)))
+        z     = x.22^(x.24*inv(x.29))
+        z.1   = true
+        z.2   = 'g'^(x.25*inv((x.23*x.29)))
+    
+    29. gb    = x.22^(x.23*inv(x.24))
+        pkB   = pk(x.26)
+        sig   = sign(x.22^(x.23*inv(x.24)), x.26)
+        x     = (x.24*x.28*inv((x.23*x.29)))
+        z     = x.22^(x.28*inv(x.29))
+        z.1   = true
+        z.2   = 'g'^(x.24*x.28*inv((x.23*x.29)))
+    
+    30. gb    = x.22^(x.23*inv(x.24))
+        pkB   = pk(x.26)
+        sig   = sign(x.22^(x.23*inv(x.24)), x.26)
+        x     = (x.28*inv(x.29))
+        z     = x.22^(x.23*x.28*inv((x.24*x.29)))
+        z.1   = true
+        z.2   = 'g'^(x.28*inv(x.29))
+    
+    31. gb    = x.22^(x.23*inv(x.24))
+        pkB   = pk(x.26)
+        sig   = sign(x.22^(x.23*inv(x.24)), x.26)
+        x     = (x.28*inv((x.23*x.29)))
+        z     = x.22^(x.28*inv((x.24*x.29)))
+        z.1   = true
+        z.2   = 'g'^(x.28*inv((x.23*x.29)))
+    
+    32. gb    = x.22^(x.23*inv((x.24*x.25)))
+        pkB   = pk(x.27)
+        sig   = sign(x.22^(x.23*inv((x.24*x.25))), x.27)
+        x     = (x.24*x.29)
+        z     = x.22^(x.23*x.29*inv(x.25))
+        z.1   = true
+        z.2   = 'g'^(x.24*x.29)
+    
+    33. gb    = x.22^(x.23*inv((x.24*x.25)))
+        pkB   = pk(x.27)
+        sig   = sign(x.22^(x.23*inv((x.24*x.25))), x.27)
+        x     = (x.24*x.29*inv(x.23))
+        z     = x.22^(x.29*inv(x.25))
+        z.1   = true
+        z.2   = 'g'^(x.24*x.29*inv(x.23))
+    
+    34. gb    = x.22^(x.23*inv((x.24*x.25)))
+        pkB   = pk(x.27)
+        sig   = sign(x.22^(x.23*inv((x.24*x.25))), x.27)
+        x     = (x.24*inv(x.29))
+        z     = x.22^(x.23*inv((x.25*x.29)))
+        z.1   = true
+        z.2   = 'g'^(x.24*inv(x.29))
+    
+    35. gb    = x.22^(x.23*inv((x.24*x.25)))
+        pkB   = pk(x.27)
+        sig   = sign(x.22^(x.23*inv((x.24*x.25))), x.27)
+        x     = (x.24*inv((x.23*x.29)))
+        z     = x.22^inv((x.25*x.29))
+        z.1   = true
+        z.2   = 'g'^(x.24*inv((x.23*x.29)))
+    
+    36. gb    = x.23^(x.24*x.25*inv(x.26))
+        pkB   = pk(x.28)
+        sig   = sign(x.23^(x.24*x.25*inv(x.26)), x.28)
+        x     = (x.26*x.30*inv((x.24*x.31)))
+        z     = x.23^(x.25*x.30*inv(x.31))
+        z.1   = true
+        z.2   = 'g'^(x.26*x.30*inv((x.24*x.31)))
+    
+    37. gb    = x.23^(x.24*x.25*inv(x.26))
+        pkB   = pk(x.28)
+        sig   = sign(x.23^(x.24*x.25*inv(x.26)), x.28)
+        x     = (x.30*inv((x.24*x.31)))
+        z     = x.23^(x.25*x.30*inv((x.26*x.31)))
+        z.1   = true
+        z.2   = 'g'^(x.30*inv((x.24*x.31)))
+    
+    38. gb    = x.23^(x.24*x.25*inv((x.26*x.27)))
+        pkB   = pk(x.29)
+        sig   = sign(x.23^(x.24*x.25*inv((x.26*x.27))), x.29)
+        x     = (x.26*x.31*inv(x.24))
+        z     = x.23^(x.25*x.31*inv(x.27))
+        z.1   = true
+        z.2   = 'g'^(x.26*x.31*inv(x.24))
+    
+    39. gb    = x.23^(x.24*x.25*inv((x.26*x.27)))
+        pkB   = pk(x.29)
+        sig   = sign(x.23^(x.24*x.25*inv((x.26*x.27))), x.29)
+        x     = (x.26*inv((x.24*x.31)))
+        z     = x.23^(x.25*inv((x.27*x.31)))
+        z.1   = true
+        z.2   = 'g'^(x.26*inv((x.24*x.31)))
+    
+    40. gb    = x.23^(x.24*inv((x.25*x.26)))
+        pkB   = pk(x.28)
+        sig   = sign(x.23^(x.24*inv((x.25*x.26))), x.28)
+        x     = (x.25*x.30*inv(x.31))
+        z     = x.23^(x.24*x.30*inv((x.26*x.31)))
+        z.1   = true
+        z.2   = 'g'^(x.25*x.30*inv(x.31))
+    
+    41. gb    = x.23^(x.24*inv((x.25*x.26)))
+        pkB   = pk(x.28)
+        sig   = sign(x.23^(x.24*inv((x.25*x.26))), x.28)
+        x     = (x.25*x.30*inv((x.24*x.31)))
+        z     = x.23^(x.30*inv((x.26*x.31)))
+        z.1   = true
+        z.2   = 'g'^(x.25*x.30*inv((x.24*x.31)))
+    
+    42. gb    = z.23^x.34
+        pkB   = pk(x.36)
+        sig   = sign(z.23^x.34, x.36)
+        x     = inv(x.34)
+        z     = z.23
+        z.1   = true
+        z.2   = 'g'^inv(x.34)
+    
+    43. gb    = z.23^inv(x.22)
+        pkB   = pkB.19
+        sig   = sig.20
+        x     = x.22
+        z     = z.23
+        z.1   = verify(sig.20, z.23^inv(x.22), pkB.19)
+        z.2   = 'g'^x.22
+    
+    44. gb    = x.24^(x.25*x.26*inv((x.27*x.28)))
+        pkB   = pk(x.30)
+        sig   = sign(x.24^(x.25*x.26*inv((x.27*x.28))), x.30)
+        x     = (x.27*x.32*inv((x.25*x.33)))
+        z     = x.24^(x.26*x.32*inv((x.28*x.33)))
+        z.1   = true
+        z.2   = 'g'^(x.27*x.32*inv((x.25*x.33)))
+    
+    45. gb    = z.24^(x.35*inv(x.36))
+        pkB   = pk(x.38)
+        sig   = sign(z.24^(x.35*inv(x.36)), x.38)
+        x     = (x.36*inv(x.35))
+        z     = z.24
+        z.1   = true
+        z.2   = 'g'^(x.36*inv(x.35))
+    
+    46. gb    = z.25^inv(x.24)
+        pkB   = pk(x.39)
+        sig   = sign(z.25^inv(x.24), x.39)
+        x     = x.24
+        z     = z.25
+        z.1   = true
+        z.2   = 'g'^x.24
+    
+    47. gb    = z.29^x.44
+        pkB   = pkB.25
+        sig   = sig.26
+        x     = inv(x.44)
+        z     = z.29
+        z.1   = verify(sig.26, z.29^x.44, pkB.25)
+        z.2   = 'g'^inv(x.44)
+    
+    48. gb    = z.30^(x.45*inv(x.46))
+        pkB   = pkB.26
+        sig   = sig.27
+        x     = (x.46*inv(x.45))
+        z     = z.30
+        z.1   = verify(sig.27, z.30^(x.45*inv(x.46)), pkB.26)
+        z.2   = 'g'^(x.46*inv(x.45))
+    
+    49. gb    = x.36^x.37
+        pkB   = pk(x.39)
+        sig   = sign(x.36^x.37, x.39)
+        x     = x.24
+        z     = x.36^(x.24*x.37)
+        z.1   = true
+        z.2   = 'g'^x.24
+    
+    50. gb    = x.37^inv((x.25*x.39))
+        pkB   = pk(x.41)
+        sig   = sign(x.37^inv((x.25*x.39)), x.41)
+        x     = x.25
+        z     = x.37^inv(x.39)
+        z.1   = true
+        z.2   = 'g'^x.25
+    
+    51. gb    = x.37^(x.38*inv(x.25))
+        pkB   = pk(x.41)
+        sig   = sign(x.37^(x.38*inv(x.25)), x.41)
+        x     = x.25
+        z     = x.37^x.38
+        z.1   = true
+        z.2   = 'g'^x.25
+    
+    52. gb    = x.38^(x.39*inv((x.26*x.41)))
+        pkB   = pk(x.43)
+        sig   = sign(x.38^(x.39*inv((x.26*x.41))), x.43)
+        x     = x.26
+        z     = x.38^(x.39*inv(x.41))
+        z.1   = true
+        z.2   = 'g'^x.26
+    
+    53. gb    = x.43^x.44
+        pkB   = pkB.25
+        sig   = sig.26
+        x     = x.28
+        z     = x.43^(x.28*x.44)
+        z.1   = verify(sig.26, x.43^x.44, pkB.25)
+        z.2   = 'g'^x.28
+    
+    54. gb    = x.43^(x.44*inv(x.28))
+        pkB   = pkB.25
+        sig   = sig.26
+        x     = x.28
+        z     = x.43^x.44
+        z.1   = verify(sig.26, x.43^(x.44*inv(x.28)), pkB.25)
+        z.2   = 'g'^x.28
+    
+    55. gb    = x.44^inv((x.29*x.46))
+        pkB   = pkB.26
+        sig   = sig.27
+        x     = x.29
+        z     = x.44^inv(x.46)
+        z.1   = verify(sig.27, x.44^inv((x.29*x.46)), pkB.26)
+        z.2   = 'g'^x.29
+    
+    56. gb    = x.44^(x.45*x.46)
+        pkB   = pkB.26
+        sig   = sig.27
+        x     = inv(x.45)
+        z     = x.44^x.46
+        z.1   = verify(sig.27, x.44^(x.45*x.46), pkB.26)
+        z.2   = 'g'^inv(x.45)
+    
+    57. gb    = x.45^(x.46*x.47*inv(x.48))
+        pkB   = pkB.27
+        sig   = sig.28
+        x     = (x.48*inv(x.46))
+        z     = x.45^x.47
+        z.1   = verify(sig.28, x.45^(x.46*x.47*inv(x.48)), pkB.27)
+        z.2   = 'g'^(x.48*inv(x.46))
+    
+    58. gb    = x.45^(x.46*inv((x.30*x.48)))
+        pkB   = pkB.27
+        sig   = sig.28
+        x     = x.30
+        z     = x.45^(x.46*inv(x.48))
+        z.1   = verify(sig.28, x.45^(x.46*inv((x.30*x.48))), pkB.27)
+        z.2   = 'g'^x.30
+    
+    59. gb    = x.45^(x.46*inv((x.47*x.48)))
+        pkB   = pkB.27
+        sig   = sig.28
+        x     = (x.47*inv(x.46))
+        z     = x.45^inv(x.48)
+        z.1   = verify(sig.28, x.45^(x.46*inv((x.47*x.48))), pkB.27)
+        z.2   = 'g'^(x.47*inv(x.46))
+    
+    60. gb    = x.46^(x.47*x.48*inv((x.49*x.50)))
+        pkB   = pkB.28
+        sig   = sig.29
+        x     = (x.49*inv(x.47))
+        z     = x.46^(x.48*inv(x.50))
+        z.1   = verify(sig.29, x.46^(x.47*x.48*inv((x.49*x.50))), pkB.28)
+        z.2   = 'g'^(x.49*inv(x.47))
+    
+    61. gb    = x.48^x.49
+        pkB   = pkB.30
+        sig   = sig.31
+        x     = inv((x.49*x.54))
+        z     = x.48^inv(x.54)
+        z.1   = verify(sig.31, x.48^x.49, pkB.30)
+        z.2   = 'g'^inv((x.49*x.54))
+    
+    62. gb    = x.48^x.49
+        pkB   = pkB.30
+        sig   = sig.31
+        x     = (x.54*inv(x.49))
+        z     = x.48^x.54
+        z.1   = verify(sig.31, x.48^x.49, pkB.30)
+        z.2   = 'g'^(x.54*inv(x.49))
+    
+    63. gb    = x.48^inv(x.49)
+        pkB   = pkB.30
+        sig   = sig.31
+        x     = inv(x.54)
+        z     = x.48^inv((x.49*x.54))
+        z.1   = verify(sig.31, x.48^inv(x.49), pkB.30)
+        z.2   = 'g'^inv(x.54)
+    
+    64. gb    = x.48^inv(x.49)
+        pkB   = pkB.30
+        sig   = sig.31
+        x     = (x.49*x.54)
+        z     = x.48^x.54
+        z.1   = verify(sig.31, x.48^inv(x.49), pkB.30)
+        z.2   = 'g'^(x.49*x.54)
+    
+    65. gb    = x.49^x.50
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = (x.55*inv((x.50*x.56)))
+        z     = x.49^(x.55*inv(x.56))
+        z.1   = verify(sig.32, x.49^x.50, pkB.31)
+        z.2   = 'g'^(x.55*inv((x.50*x.56)))
+    
+    66. gb    = x.49^inv(x.50)
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = (x.55*inv(x.56))
+        z     = x.49^(x.55*inv((x.50*x.56)))
+        z.1   = verify(sig.32, x.49^inv(x.50), pkB.31)
+        z.2   = 'g'^(x.55*inv(x.56))
+    
+    67. gb    = x.49^inv((x.50*x.51))
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = (x.50*x.56)
+        z     = x.49^(x.56*inv(x.51))
+        z.1   = verify(sig.32, x.49^inv((x.50*x.51)), pkB.31)
+        z.2   = 'g'^(x.50*x.56)
+    
+    68. gb    = x.49^inv((x.50*x.51))
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = (x.50*inv(x.56))
+        z     = x.49^inv((x.51*x.56))
+        z.1   = verify(sig.32, x.49^inv((x.50*x.51)), pkB.31)
+        z.2   = 'g'^(x.50*inv(x.56))
+    
+    69. gb    = x.49^(x.50*x.51)
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = inv((x.50*x.56))
+        z     = x.49^(x.51*inv(x.56))
+        z.1   = verify(sig.32, x.49^(x.50*x.51), pkB.31)
+        z.2   = 'g'^inv((x.50*x.56))
+    
+    70. gb    = x.49^(x.50*x.51)
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = (x.56*inv(x.50))
+        z     = x.49^(x.51*x.56)
+        z.1   = verify(sig.32, x.49^(x.50*x.51), pkB.31)
+        z.2   = 'g'^(x.56*inv(x.50))
+    
+    71. gb    = x.49^(x.50*inv(x.51))
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = inv(x.56)
+        z     = x.49^(x.50*inv((x.51*x.56)))
+        z.1   = verify(sig.32, x.49^(x.50*inv(x.51)), pkB.31)
+        z.2   = 'g'^inv(x.56)
+    
+    72. gb    = x.49^(x.50*inv(x.51))
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = inv((x.50*x.56))
+        z     = x.49^inv((x.51*x.56))
+        z.1   = verify(sig.32, x.49^(x.50*inv(x.51)), pkB.31)
+        z.2   = 'g'^inv((x.50*x.56))
+    
+    73. gb    = x.49^(x.50*inv(x.51))
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = (x.51*x.56)
+        z     = x.49^(x.50*x.56)
+        z.1   = verify(sig.32, x.49^(x.50*inv(x.51)), pkB.31)
+        z.2   = 'g'^(x.51*x.56)
+    
+    74. gb    = x.49^(x.50*inv(x.51))
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = (x.51*x.56*inv(x.50))
+        z     = x.49^x.56
+        z.1   = verify(sig.32, x.49^(x.50*inv(x.51)), pkB.31)
+        z.2   = 'g'^(x.51*x.56*inv(x.50))
+    
+    75. gb    = x.49^(x.50*inv(x.51))
+        pkB   = pkB.31
+        sig   = sig.32
+        x     = (x.51*inv((x.50*x.56)))
+        z     = x.49^inv(x.56)
+        z.1   = verify(sig.32, x.49^(x.50*inv(x.51)), pkB.31)
+        z.2   = 'g'^(x.51*inv((x.50*x.56)))
+    
+    76. gb    = x.50^inv((x.51*x.52))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.51*x.57*inv(x.58))
+        z     = x.50^(x.57*inv((x.52*x.58)))
+        z.1   = verify(sig.33, x.50^inv((x.51*x.52)), pkB.32)
+        z.2   = 'g'^(x.51*x.57*inv(x.58))
+    
+    77. gb    = x.50^(x.51*x.52)
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.57*inv((x.51*x.58)))
+        z     = x.50^(x.52*x.57*inv(x.58))
+        z.1   = verify(sig.33, x.50^(x.51*x.52), pkB.32)
+        z.2   = 'g'^(x.57*inv((x.51*x.58)))
+    
+    78. gb    = x.50^(x.51*x.52*inv(x.53))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = inv((x.51*x.58))
+        z     = x.50^(x.52*inv((x.53*x.58)))
+        z.1   = verify(sig.33, x.50^(x.51*x.52*inv(x.53)), pkB.32)
+        z.2   = 'g'^inv((x.51*x.58))
+    
+    79. gb    = x.50^(x.51*x.52*inv(x.53))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.53*x.58*inv(x.51))
+        z     = x.50^(x.52*x.58)
+        z.1   = verify(sig.33, x.50^(x.51*x.52*inv(x.53)), pkB.32)
+        z.2   = 'g'^(x.53*x.58*inv(x.51))
+    
+    80. gb    = x.50^(x.51*x.52*inv(x.53))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.53*inv((x.51*x.58)))
+        z     = x.50^(x.52*inv(x.58))
+        z.1   = verify(sig.33, x.50^(x.51*x.52*inv(x.53)), pkB.32)
+        z.2   = 'g'^(x.53*inv((x.51*x.58)))
+    
+    81. gb    = x.50^(x.51*inv(x.52))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.52*x.57*inv((x.51*x.58)))
+        z     = x.50^(x.57*inv(x.58))
+        z.1   = verify(sig.33, x.50^(x.51*inv(x.52)), pkB.32)
+        z.2   = 'g'^(x.52*x.57*inv((x.51*x.58)))
+    
+    82. gb    = x.50^(x.51*inv(x.52))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.57*inv(x.58))
+        z     = x.50^(x.51*x.57*inv((x.52*x.58)))
+        z.1   = verify(sig.33, x.50^(x.51*inv(x.52)), pkB.32)
+        z.2   = 'g'^(x.57*inv(x.58))
+    
+    83. gb    = x.50^(x.51*inv(x.52))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.57*inv((x.51*x.58)))
+        z     = x.50^(x.57*inv((x.52*x.58)))
+        z.1   = verify(sig.33, x.50^(x.51*inv(x.52)), pkB.32)
+        z.2   = 'g'^(x.57*inv((x.51*x.58)))
+    
+    84. gb    = x.50^(x.51*inv((x.52*x.53)))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.52*x.58)
+        z     = x.50^(x.51*x.58*inv(x.53))
+        z.1   = verify(sig.33, x.50^(x.51*inv((x.52*x.53))), pkB.32)
+        z.2   = 'g'^(x.52*x.58)
+    
+    85. gb    = x.50^(x.51*inv((x.52*x.53)))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.52*x.58*inv(x.51))
+        z     = x.50^(x.58*inv(x.53))
+        z.1   = verify(sig.33, x.50^(x.51*inv((x.52*x.53))), pkB.32)
+        z.2   = 'g'^(x.52*x.58*inv(x.51))
+    
+    86. gb    = x.50^(x.51*inv((x.52*x.53)))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.52*inv(x.58))
+        z     = x.50^(x.51*inv((x.53*x.58)))
+        z.1   = verify(sig.33, x.50^(x.51*inv((x.52*x.53))), pkB.32)
+        z.2   = 'g'^(x.52*inv(x.58))
+    
+    87. gb    = x.50^(x.51*inv((x.52*x.53)))
+        pkB   = pkB.32
+        sig   = sig.33
+        x     = (x.52*inv((x.51*x.58)))
+        z     = x.50^inv((x.53*x.58))
+        z.1   = verify(sig.33, x.50^(x.51*inv((x.52*x.53))), pkB.32)
+        z.2   = 'g'^(x.52*inv((x.51*x.58)))
+    
+    88. gb    = x.51^(x.52*x.53*inv(x.54))
+        pkB   = pkB.33
+        sig   = sig.34
+        x     = (x.54*x.59*inv((x.52*x.60)))
+        z     = x.51^(x.53*x.59*inv(x.60))
+        z.1   = verify(sig.34, x.51^(x.52*x.53*inv(x.54)), pkB.33)
+        z.2   = 'g'^(x.54*x.59*inv((x.52*x.60)))
+    
+    89. gb    = x.51^(x.52*x.53*inv(x.54))
+        pkB   = pkB.33
+        sig   = sig.34
+        x     = (x.59*inv((x.52*x.60)))
+        z     = x.51^(x.53*x.59*inv((x.54*x.60)))
+        z.1   = verify(sig.34, x.51^(x.52*x.53*inv(x.54)), pkB.33)
+        z.2   = 'g'^(x.59*inv((x.52*x.60)))
+    
+    90. gb    = x.51^(x.52*x.53*inv((x.54*x.55)))
+        pkB   = pkB.33
+        sig   = sig.34
+        x     = (x.54*x.60*inv(x.52))
+        z     = x.51^(x.53*x.60*inv(x.55))
+        z.1   = verify(sig.34, x.51^(x.52*x.53*inv((x.54*x.55))), pkB.33)
+        z.2   = 'g'^(x.54*x.60*inv(x.52))
+    
+    91. gb    = x.51^(x.52*x.53*inv((x.54*x.55)))
+        pkB   = pkB.33
+        sig   = sig.34
+        x     = (x.54*inv((x.52*x.60)))
+        z     = x.51^(x.53*inv((x.55*x.60)))
+        z.1   = verify(sig.34, x.51^(x.52*x.53*inv((x.54*x.55))), pkB.33)
+        z.2   = 'g'^(x.54*inv((x.52*x.60)))
+    
+    92. gb    = x.51^(x.52*inv((x.53*x.54)))
+        pkB   = pkB.33
+        sig   = sig.34
+        x     = (x.53*x.59*inv(x.60))
+        z     = x.51^(x.52*x.59*inv((x.54*x.60)))
+        z.1   = verify(sig.34, x.51^(x.52*inv((x.53*x.54))), pkB.33)
+        z.2   = 'g'^(x.53*x.59*inv(x.60))
+    
+    93. gb    = x.51^(x.52*inv((x.53*x.54)))
+        pkB   = pkB.33
+        sig   = sig.34
+        x     = (x.53*x.59*inv((x.52*x.60)))
+        z     = x.51^(x.59*inv((x.54*x.60)))
+        z.1   = verify(sig.34, x.51^(x.52*inv((x.53*x.54))), pkB.33)
+        z.2   = 'g'^(x.53*x.59*inv((x.52*x.60)))
+    
+    94. gb    = x.52^(x.53*x.54*inv((x.55*x.56)))
+        pkB   = pkB.34
+        sig   = sig.35
+        x     = (x.55*x.61*inv((x.53*x.62)))
+        z     = x.52^(x.54*x.61*inv((x.56*x.62)))
+        z.1   = verify(sig.35, x.52^(x.53*x.54*inv((x.55*x.56))), pkB.34)
+        z.2   = 'g'^(x.55*x.61*inv((x.53*x.62)))
+  */
+
+restriction Equality:
+  "∀ x y #i. (Eq( x, y ) @ #i) ⇒ (x = y)"
+  // safety formula
+
+lemma executability:
+  exists-trace
+  "∃ A B Kab #i #j.
+    (((((Secret( A, Kab ) @ #i) ∧ (Secret( B, Kab ) @ #j)) ∧
+       (∀ id1 id2 #k1 #k2.
+         ((Create( id1, 'I' ) @ #k1) ∧ (Create( id2, 'I' ) @ #k2)) ⇒
+         (id1 = id2))) ∧
+      (∀ id1 id2 #k1 #k2.
+        ((Create( id1, 'R' ) @ #k1) ∧ (Create( id2, 'R' ) @ #k2)) ⇒
+        (id1 = id2))) ∧
+     (¬(A = B))) ∧
+    (¬(∃ X #k. Reveal( X ) @ #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ A B Kab #i #j.
+  (Secret( A, Kab ) @ #i) ∧ (Secret( B, Kab ) @ #j)
+ ∧
+  (∀ id1 id2 #k1 #k2.
+    (Create( id1, 'I' ) @ #k1) ∧ (Create( id2, 'I' ) @ #k2)
+   ⇒
+    id1 = id2) ∧
+  (∀ id1 id2 #k1 #k2.
+    (Create( id1, 'R' ) @ #k1) ∧ (Create( id2, 'R' ) @ #k2)
+   ⇒
+    id1 = id2) ∧
+  (¬(A = B)) ∧
+  (∀ X #k. (Reveal( X ) @ #k) ⇒ ⊥)"
+*/
+simplify
+solve( Secret( A, Kab ) @ #i )
+  case A_2
+  solve( St_A_1( A, id, B, sk, pk(x), x.1 ) ▶₀ #i )
+    case A_1
+    solve( Secret( B, h(z) ) @ #j )
+      case B_2
+      solve( St_B_1( B, id.1, A.2, sk.2, pkA, ga ) ▶₁ #j )
+        case B_1
+        solve( !KU( sign(gb, ~sk.1) ) @ #vk.3 )
+          case B_2
+          solve( !KU( sign('g'^~x, ~sk.2) ) @ #vk.8 )
+            case A_1
+            solve( !KU( pk(~sk.1) ) @ #vk.5 )
+              case B_2
+              solve( !KU( pk(~sk) ) @ #vk.9 )
+                case A_1
+                solve( !KU( 'g'^~y ) @ #vk.8 )
+                  case B_2
+                  solve( !KU( 'g'^~x ) @ #vk.9 )
+                    case A_1
+                    SOLVED // trace found
+                  qed
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+lemma injectiveagreementINITIATOR:
+  all-traces
+  "∀ a b Kab ga gb #i.
+    (((((Commit( a, b, <'I', 'R', Kab, ga, gb> ) @ #i) ∧
+        (∀ id1 id2 #k1 #k2.
+          ((Create( id1, 'I' ) @ #k1) ∧ (Create( id2, 'I' ) @ #k2)) ⇒
+          (id1 = id2))) ∧
+       (∀ id1 id2 #k1 #k2.
+         ((Create( id1, 'R' ) @ #k1) ∧ (Create( id2, 'R' ) @ #k2)) ⇒
+         (id1 = id2))) ∧
+      (∃ a3 b3 #j. Running( b3, a3, <'I', 'R', Kab, ga, gb> ) @ #j)) ∧
+     (¬(a = b))) ⇒
+    ((∃ #j.
+       (Running( b, a, <'I', 'R', Kab, ga, gb> ) @ #j) ∧
+       (¬(∃ a2 b2 #i2.
+           (Commit( a2, b2, <'I', 'R', Kab, ga, gb> ) @ #i2) ∧
+           (¬(#i2 = #i))))) ∨
+     (∃ X #r. (Reveal( X ) @ #r) ∧ (Honest( X ) @ #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b Kab ga gb #i.
+  (Commit( a, b, <'I', 'R', Kab, ga, gb> ) @ #i)
+ ∧
+  (∀ id1 id2 #k1 #k2.
+    (Create( id1, 'I' ) @ #k1) ∧ (Create( id2, 'I' ) @ #k2)
+   ⇒
+    id1 = id2) ∧
+  (∀ id1 id2 #k1 #k2.
+    (Create( id1, 'R' ) @ #k1) ∧ (Create( id2, 'R' ) @ #k2)
+   ⇒
+    id1 = id2) ∧
+  (∃ a3 b3 #j. (Running( b3, a3, <'I', 'R', Kab, ga, gb> ) @ #j)) ∧
+  (¬(a = b)) ∧
+  (∀ #j.
+    (Running( b, a, <'I', 'R', Kab, ga, gb> ) @ #j)
+   ⇒
+    ∃ a2 b2 #i2.
+     (Commit( a2, b2, <'I', 'R', Kab, ga, gb> ) @ #i2) ∧ ¬(#i2 = #i)) ∧
+  (∀ X #r. (Reveal( X ) @ #r) ∧ (Honest( X ) @ #i) ⇒ ⊥)"
+*/
+simplify
+solve( St_A_1( a, id, b, sk, pk(x), x.1 ) ▶₀ #i )
+  case A_1
+  solve( St_B_1( b3, id.1, a3, sk.2, pkA, 'g'^~x ) ▶₁ #j )
+    case B_1
+    solve( !KU( sign('g'^~y, ~sk.1) ) @ #vk.3 )
+      case B_2
+      solve( !KU( sign('g'^~x, ~sk.2) ) @ #vk.8 )
+        case c_sign
+        solve( !KU( ~sk.2 ) @ #vk.10 )
+          case Reveal_SK
+          solve( !KU( 'g'^~y ) @ #vk.6 )
+            case B_2
+            solve( !KU( pk(~sk.1) ) @ #vk.8 )
+              case B_2
+              solve( !KU( 'g'^~x ) @ #vk.9 )
+                case A_1
+                solve( !KU( pk(~sk.2) ) @ #vk.10 )
+                  case Setup_Keypair
+                  SOLVED // trace found
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+qed
+
+/* All well-formedness checks were successful. */
+
+end
